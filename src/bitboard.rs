@@ -1,9 +1,13 @@
 use smallvec::SmallVec;
 
-type Mask = u32;
 // not sure if 2 is the best but think so
 // u8 wastes 3 bits per move
-type Action = SmallVec<[u8; 2]>;
+// also might just be able to make our own more efficient version of SmallVec
+// there might be a better way to store moves in the context of bit tables
+// this is temporary what i think the action struct may look like
+pub struct Action(SmallVec<[u8; 2]>);
+
+type Mask = u32;
 
 static MASK_L3: Mask = 0x07070707;
 static MASK_L5: Mask = 0x00e0e0e0;
@@ -120,17 +124,8 @@ impl Bitboard {
 	/// Returns a u32 mask that represents all of the white pieces that can move.
 	/// Recognize that this does not include the white pieces that can jump. To
 	/// access those use `get_jumpers_white`.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use muskox::bitboard::Bitboard;
-	///
-	/// let board = Bitboard::new();
-	/// assert_eq!(board.get_movers_white(), 0x00f00000);  // only white's first row can move
-	/// ```
-	// will make this private at some point
-	pub fn get_movers_white(&self) -> Mask {
+	#[allow(dead_code)]
+	fn get_movers_white(&self) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
 		let white_kings = self.whites & self.kings;
 
@@ -151,17 +146,8 @@ impl Bitboard {
 	/// Returns the u32 mask that represents all of the white pieces that can move.
 	/// Recognize that this does not include the white pieces that can jump. To
 	/// access those use `get_jumpers_black`
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use muskox::bitboard::Bitboard;
-	///
-	/// let board = Bitboard::new();
-	/// assert_eq!(board.get_movers_black(), 0x00000f00);  // only black's first row can move
-	/// ```
-	// will make this private at some point!
-	pub fn get_movers_black(&self) -> Mask {
+	#[allow(dead_code)]
+	fn get_movers_black(&self) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
 		let black_kings = self.blacks & self.kings;
 
@@ -179,8 +165,8 @@ impl Bitboard {
 		movers
 	}
 
-	// will make this private at some point!
-	pub fn get_jumpers_white(&self) -> Mask {
+	#[allow(dead_code)]
+	fn get_jumpers_white(&self) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
 		let white_kings = self.whites & self.kings;
 
@@ -188,24 +174,53 @@ impl Bitboard {
 		let mut temp = (not_occupied << 4) & self.blacks;
 
 		if temp != 0 {
-			movers |= ((temp & MASK_L3) << 3) | ((temp & MASK_L5) << 5) & self.whites;
+			movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & self.whites;
 		}
 
-		temp = (((not_occupied & MASK_L3) << 3) | ((not_occupied & MASK_L5) << 5)) & self.blacks;
+		temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.blacks;
 		movers |= (temp << 4) & self.whites;
 
 		if white_kings != 0 {
 			temp = (not_occupied >> 4) & self.blacks;
 			if temp != 0 {
-				movers |= (((temp & MASK_R3) >> 3) | ((temp & MASK_R5) >> 5)) & self.whites;
+				movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5	)) & self.whites;
 			}
-			temp = (((not_occupied & MASK_R3) >> 3) | ((not_occupied & MASK_R5) >> 5)) & self.blacks;
+			temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
 			if temp != 0 {
 				movers |= (temp >> 4) & self.whites;
 			}
 		}
 		movers
 	}
+
+	#[allow(dead_code)]
+	fn get_jumpers_black(&self) -> Mask {
+		let not_occupied = !(self.whites | self.blacks);
+		let black_kings = self.blacks & self.kings;
+
+		let mut movers = 0;
+		let mut temp = (not_occupied << 4) & self.whites;
+
+		if temp != 0 {
+			movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & self.blacks;
+		}
+
+		temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.whites;
+		movers |= (temp << 4) & self.blacks;
+
+		if black_kings != 0 {
+			temp = (not_occupied >> 4) & self.whites;
+			if temp != 0 {
+				movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5	)) & self.blacks;
+			}
+			temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.whites;
+			if temp != 0 {
+				movers |= (temp >> 4) & self.blacks;
+			}
+		}
+		movers
+	}
+
 
 	/// Creates string FEN tag according to Portable Draughts Notation (PDN). Read more
 	/// about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
@@ -217,6 +232,7 @@ impl Bitboard {
 	///
 	/// let b = Bitboard::new();
 	/// assert_eq!(b.fen(), "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12");
+	/// ```
 	pub fn fen(&self) -> String {
 		let mut out = String::new();
 
@@ -239,7 +255,7 @@ impl Bitboard {
 				it = it >> 1;
 				pos += 1;
 			}
-			out.pop()
+			out.pop();  // remove unnecessary last comma
 		};
 
 		out.push_str(":W");
@@ -315,11 +331,10 @@ mod tests {
 
 	static BLANK_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
 	static TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
-	// maybe swap out TEST_BOARD_2 for another one with jumping. its too similar to blank
-	static TEST_BOARD_2: &'static str = "W:B1,2,3,4,6,7,9,10,11,12:W18,19,21,23,24,26,29,30,31,32";
+	static TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
 
 	#[test]
-	fn new_from_fen() {
+	fn new_from_fen_test() {
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
 
 		assert_eq!(board.blacks, 0x11288800);
@@ -328,49 +343,65 @@ mod tests {
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
 
-		assert_eq!(board.blacks, 0x00000f6f);
-		assert_eq!(board.whites, 0xf2d60000);
-		assert_eq!(board.kings, 0);
+		assert_eq!(board.blacks, 0x81204000);
+		assert_eq!(board.whites, 0x26040500);
+		assert_eq!(board.kings, 0x82000400);
 	}
 
 	#[test]
-	fn fen() {
+	fn fen_test() {
 		let board = Bitboard::new();
-
 		assert_eq!(board.fen(), BLANK_BOARD);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-
 		assert_eq!(board.fen(), "B:WK10,K15,18,24,27,28:B12,16,20,K22,K25,K29");
 	}
 
 	#[test]
-	fn get_movers_white() {
+	fn get_movers_white_test() {
 		let board = Bitboard::new();
-
 		assert_eq!(board.get_movers_white(), 0x00f00000);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-
 		assert_eq!(board.get_movers_white(), 0x04824200);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-
-		assert_eq!(board.get_movers_white(), 0xf2960000);
+		assert_eq!(board.get_movers_white(), 0x06040500);
 	}
 
 	#[test]
-	fn get_movers_black() {
+	fn get_movers_black_test() {
 		let board = Bitboard::new();
-
 		assert_eq!(board.get_movers_black(), 0x00000f00);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-
 		assert_eq!(board.get_movers_black(), 0x01208000);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+		assert_eq!(board.get_movers_black(), 0x81004000);
+	}
 
-		assert_eq!(board.get_movers_black(), 0x00000f0d);
+	#[test]
+	fn get_jumpers_white_test() {
+		let board = Bitboard::new();
+		assert_eq!(board.get_jumpers_white(), 0);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+		assert_eq!(board.get_jumpers_white(), 0);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+		assert_eq!(board.get_jumpers_white(), 0x22040400);
+	}
+
+	#[test]
+	fn get_jumpers_black_test() {
+		let board = Bitboard::new();
+		assert_eq!(board.get_jumpers_black(), 0);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+		assert_eq!(board.get_jumpers_black(), 0);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+		assert_eq!(board.get_jumpers_black(), 0x080004000);
 	}
 }
