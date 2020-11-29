@@ -10,7 +10,7 @@ static MASK_L5: Mask = 0x00e0e0e0;
 static MASK_R3: Mask = 0xe0e0e0e0;
 static MASK_R5: Mask = 0x07070700;
 
-pub enum Color {
+enum Color {
 	Black,
 	White,
 }
@@ -77,7 +77,7 @@ impl Bitboard {
 			let mut temp: Mask = 0;
 
 			for piece in pieces.iter() {
-				let (piece_n, king) = match piece.chars().next().ok_or("Invalid piece string!")? {
+				let (piece_n, is_king) = match piece.chars().next().ok_or("Invalid piece string!")? {
 					'K' => (piece.chars().skip(1).collect::<String>().parse::<u8>()
 						.or_else(|_| Err("Invalid piece number!"))? - 1, true),
 					_ => (piece.parse::<u8>().or_else(|_| Err("Invalid piece number!"))? - 1, false),
@@ -89,7 +89,7 @@ impl Bitboard {
 
 				temp |= 1 << piece_n;
 
-				if king {
+				if is_king {
 					kings |= 1 << piece_n;
 				}
 			}
@@ -134,15 +134,15 @@ impl Bitboard {
 		let not_occupied = !(self.whites | self.blacks);
 		let white_kings = self.whites & self.kings;
 
-		let mut movers = (not_occupied << 4 ) & self.whites;
+		let mut movers = (not_occupied << 4) & self.whites;
 
-		movers |= ((not_occupied & MASK_L3) << 3) & self.whites;
-		movers |= ((not_occupied & MASK_L5) << 5) & self.whites;
+		movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
+		movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
 
 		if white_kings != 0 {
 			movers |= (not_occupied >> 4) & white_kings;
-			movers |= ((not_occupied & MASK_R3) >> 3) & white_kings;
-			movers |= ((not_occupied & MASK_R3) >> 5) & white_kings;
+			movers |= ((not_occupied & MASK_L3) >> 3) & white_kings;
+			movers |= ((not_occupied & MASK_L5) >> 5) & white_kings;
 		}
 
 		movers
@@ -165,15 +165,15 @@ impl Bitboard {
 		let not_occupied = !(self.whites | self.blacks);
 		let black_kings = self.blacks & self.kings;
 
-		let mut movers = (not_occupied >> 4 ) & self.blacks;
+		let mut movers = (not_occupied >> 4) & self.blacks;
 
 		movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
 		movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
 
 		if black_kings != 0 {
-			movers |= (not_occupied >> 4) & black_kings;
+			movers |= (not_occupied << 4) & black_kings;
 			movers |= ((not_occupied & MASK_R3) << 3) & black_kings;
-			movers |= ((not_occupied & MASK_R3) << 5) & black_kings;
+			movers |= ((not_occupied & MASK_R5) << 5) & black_kings;
 		}
 
 		movers
@@ -230,7 +230,6 @@ impl Bitboard {
 			let mut pos = 1;
 			while it != 0 {
 				if it % 2 == 1 {
-					// worried about the below line a bit
 					if (self.kings >> (pos - 1)) % 2 == 1 {
 						out.push('K');
 					}
@@ -310,20 +309,24 @@ impl Bitboard {
 
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 
+	static BLANK_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
+	static TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
+	// maybe swap out TEST_BOARD_2 for another one with jumping. its too similar to blank
+	static TEST_BOARD_2: &'static str = "W:B1,2,3,4,6,7,9,10,11,12:W18,19,21,23,24,26,29,30,31,32";
+
 	#[test]
 	fn new_from_fen() {
-		let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
 
 		assert_eq!(board.blacks, 0x11288800);
 		assert_eq!(board.whites, 0x0c824200);
 		assert_eq!(board.kings, 0x11204200);
 
-		let board = Bitboard::new_from_fen("W:B1,2,3,4,6,7,9,10,11,12:W18,19,21,23,24,26,29,30,31,32").unwrap();
+		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
 
 		assert_eq!(board.blacks, 0x00000f6f);
 		assert_eq!(board.whites, 0xf2d60000);
@@ -334,9 +337,9 @@ mod tests {
 	fn fen() {
 		let board = Bitboard::new();
 
-		assert_eq!(board.fen(), "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12");
+		assert_eq!(board.fen(), BLANK_BOARD);
 
-		let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
 
 		assert_eq!(board.fen(), "B:WK10,K15,18,24,27,28:B12,16,20,K22,K25,K29");
 	}
@@ -346,6 +349,14 @@ mod tests {
 		let board = Bitboard::new();
 
 		assert_eq!(board.get_movers_white(), 0x00f00000);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+
+		assert_eq!(board.get_movers_white(), 0x04824200);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+
+		assert_eq!(board.get_movers_white(), 0xf2960000);
 	}
 
 	#[test]
@@ -353,5 +364,13 @@ mod tests {
 		let board = Bitboard::new();
 
 		assert_eq!(board.get_movers_black(), 0x00000f00);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+
+		assert_eq!(board.get_movers_black(), 0x01208000);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+
+		assert_eq!(board.get_movers_black(), 0x00000f0d);
 	}
 }
