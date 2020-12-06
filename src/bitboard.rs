@@ -19,10 +19,8 @@ pub enum Color {
 	Black,
 	White,
 }
-
 use Color::*;
 
-// these enums might be a little bit too complicated
 #[derive(Debug, PartialEq)]
 pub enum Winner {
 	Player(Color),
@@ -97,10 +95,11 @@ impl Bitboard {
 			let mut temp: Mask = 0;
 
 			for piece in pieces.iter() {
-				let (piece_n, is_king) = match piece.chars().next().ok_or("Invalid piece string!")? {
-					'K' => (piece.chars().skip(1).collect::<String>().parse::<u8>()
+				let (piece_n, is_king) = match piece.chars().next() {
+					Some('K') => (piece.chars().skip(1).collect::<String>().parse::<u8>()
 						.or_else(|_| Err("Invalid piece number!"))? - 1, true),
-					_ => (piece.parse::<u8>().or_else(|_| Err("Invalid piece number!"))? - 1, false),
+					Some(_) => (piece.parse::<u8>().or_else(|_| Err("Invalid piece number!"))? - 1, false),
+					None => break,  // if no pieces exist. not super pretty or clear like this...
 				};
 
 				if piece_n > 31 {  // already had been converted to computer numbers
@@ -126,15 +125,7 @@ impl Bitboard {
 	}
 
 	pub fn get_game_state(&self) -> GameState {
-		// first check if pieces are gone
-		if self.blacks == 0 {
-			return GameState::Completed(Winner::Player(White));
-		}
-		if self.whites == 0 {
-			return GameState::Completed(Winner::Player(Black));
-		}
-
-		// next, check if somebody can't move
+		// check if somebody can't move
 		if self.turn == Black && self.get_movers(Black) == 0 && self.get_jumpers(Black) == 0 {
 			return GameState::Completed(Winner::Player(White));
 		}
@@ -143,6 +134,7 @@ impl Bitboard {
 		}
 
 		// need to figure out how to determine if there is a draw
+		// maybe make it so the computer can agree to a draw
 		if false {
 			return GameState::Completed(Winner::Draw);
 		}
@@ -166,7 +158,6 @@ impl Bitboard {
 	/// Returns a u32 mask that represents all of the white pieces that can move.
 	/// Recognize that this does not include the white pieces that can jump. To
 	/// access those use `get_jumpers_white`.
-	#[allow(dead_code)]
 	fn get_movers(&self, color: Color) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
 
@@ -206,7 +197,6 @@ impl Bitboard {
 		}
 	}
 
-	#[allow(dead_code)]
 	fn get_jumpers(&self, color: Color) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
 
@@ -230,7 +220,7 @@ impl Bitboard {
 					temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
 					movers |= (temp >> 4) & white_kings;
 				}
-				
+
 				movers
 			},
 			Black => {
@@ -366,10 +356,12 @@ impl Bitboard {
 mod tests {
 	use super::*;
 
-	static BLANK_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
+	static DEFAULT_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
 	static TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
 	static TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
 	static TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
+	static TEST_BOARD_4: &'static str = "B:WK11,3:B";
+	static TEST_BOARD_5: &'static str = "W:B:W";
 
 	#[test]
 	fn new_from_fen_test() {
@@ -377,17 +369,25 @@ mod tests {
 		assert_eq!(board.blacks, 0x11288800);
 		assert_eq!(board.whites, 0x0c824200);
 		assert_eq!(board.kings, 0x11204200);
+		assert_eq!(board.turn, Black);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
 		assert_eq!(board.blacks, 0x81204000);
 		assert_eq!(board.whites, 0x26040500);
 		assert_eq!(board.kings, 0x82000400);
+		assert_eq!(board.turn, White);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_4).unwrap();
+		assert_eq!(board.blacks, 0);
+		assert_eq!(board.whites, 0x00000404);
+		assert_eq!(board.kings, 0x00000400);
+		assert_eq!(board.turn, Black);
 	}
 
 	#[test]
 	fn fen_test() {
 		let board = Bitboard::new();
-		assert_eq!(board.fen(), BLANK_BOARD);
+		assert_eq!(board.fen(), DEFAULT_BOARD);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
 		assert_eq!(board.fen(), "B:WK10,K15,18,24,27,28:B12,16,20,K22,K25,K29");
@@ -461,7 +461,10 @@ mod tests {
 		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
 		assert_eq!(board.get_game_state(), GameState::InProgress);
 
-		// need to test different ways to win / draw
-		// at least three or four others
+		let board = Bitboard::new_from_fen(TEST_BOARD_4).unwrap();
+		assert_eq!(board.get_game_state(), GameState::Completed(Winner::Player(White)));
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_5).unwrap();
+		assert_eq!(board.get_game_state(), GameState::Completed(Winner::Player(Black)));
 	}
 }
