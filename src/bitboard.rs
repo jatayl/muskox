@@ -14,9 +14,25 @@ static MASK_L5: Mask = 0x00e0e0e0;
 static MASK_R3: Mask = 0xe0e0e0e0;
 static MASK_R5: Mask = 0x07070700;
 
-enum Color {
+#[derive(Debug, PartialEq)]
+pub enum Color {
 	Black,
 	White,
+}
+
+use Color::*;
+
+// these enums might be a little bit too complicated
+#[derive(Debug, PartialEq)]
+pub enum Winner {
+	Player(Color),
+	Draw
+}
+
+#[derive(Debug, PartialEq)]
+pub enum GameState {
+	Completed(Winner),
+	InProgress,
 }
 
 pub struct Bitboard {
@@ -33,10 +49,10 @@ impl Bitboard {
 			blacks: 0x00000fff,
 			whites: 0xfff00000,
 			kings: 0,
-			turn: Color::Black,
+			turn: Black,
 		}
 	}
-	
+
 	/// Creates a new bitboard from a string FEN tag according to Portable Draughts Notation.
 	/// (PDN). Read more about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
 	///
@@ -65,8 +81,8 @@ impl Bitboard {
 		}
 
 		let turn = match d[0] {
-			"B" => Color::Black,
-			"W" => Color::White,
+			"B" => Black,
+			"W" => White,
 			_ => return Err("Not a valid turn color!"),
 		};
 
@@ -109,6 +125,32 @@ impl Bitboard {
 		Ok(Bitboard{ blacks, whites, kings, turn })
 	}
 
+	pub fn get_game_state(&self) -> GameState {
+		// first check if pieces are gone
+		if self.blacks == 0 {
+			return GameState::Completed(Winner::Player(White));
+		}
+		if self.whites == 0 {
+			return GameState::Completed(Winner::Player(Black));
+		}
+
+		// next, check if somebody can't move
+		if self.turn == Black && self.get_movers(Black) == 0 && self.get_jumpers(Black) == 0 {
+			return GameState::Completed(Winner::Player(White));
+		}
+		if self.turn == White && self.get_movers(White) == 0 && self.get_jumpers(White) == 0 {
+			return GameState::Completed(Winner::Player(Black));
+		}
+
+		// need to figure out how to determine if there is a draw
+		if false {
+			return GameState::Completed(Winner::Draw);
+		}
+
+		// if none of these are satisfied, then the game is still in progress
+		GameState::InProgress
+	}
+
 	pub fn is_valid_move(&self, _action: &Action) -> bool {
 		true
 	}
@@ -125,100 +167,95 @@ impl Bitboard {
 	/// Recognize that this does not include the white pieces that can jump. To
 	/// access those use `get_jumpers_white`.
 	#[allow(dead_code)]
-	fn get_movers_white(&self) -> Mask {
+	fn get_movers(&self, color: Color) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
-		let white_kings = self.whites & self.kings;
 
-		let mut movers = (not_occupied << 4) & self.whites;
+		match color {
+			White => {
+				let white_kings = self.whites & self.kings;
 
-		movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
-		movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
+				let mut movers = (not_occupied << 4) & self.whites;
 
-		if white_kings != 0 {
-			movers |= (not_occupied >> 4) & white_kings;
-			movers |= ((not_occupied & MASK_L3) >> 3) & white_kings;
-			movers |= ((not_occupied & MASK_L5) >> 5) & white_kings;
-		}
+				movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
+				movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
 
-		movers
-	}
+				if white_kings != 0 {
+					movers |= (not_occupied >> 4) & white_kings;
+					movers |= ((not_occupied & MASK_L3) >> 3) & white_kings;
+					movers |= ((not_occupied & MASK_L5) >> 5) & white_kings;
+				}
 
-	/// Returns the u32 mask that represents all of the white pieces that can move.
-	/// Recognize that this does not include the white pieces that can jump. To
-	/// access those use `get_jumpers_black`
-	#[allow(dead_code)]
-	fn get_movers_black(&self) -> Mask {
-		let not_occupied = !(self.whites | self.blacks);
-		let black_kings = self.blacks & self.kings;
+				movers
+			},
+			Black => {
+				let black_kings = self.blacks & self.kings;
 
-		let mut movers = (not_occupied >> 4) & self.blacks;
+				let mut movers = (not_occupied >> 4) & self.blacks;
 
-		movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
-		movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
+				movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
+				movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
 
-		if black_kings != 0 {
-			movers |= (not_occupied << 4) & black_kings;
-			movers |= ((not_occupied & MASK_R3) << 3) & black_kings;
-			movers |= ((not_occupied & MASK_R5) << 5) & black_kings;
-		}
+				if black_kings != 0 {
+					movers |= (not_occupied << 4) & black_kings;
+					movers |= ((not_occupied & MASK_R3) << 3) & black_kings;
+					movers |= ((not_occupied & MASK_R5) << 5) & black_kings;
+				}
 
-		movers
-	}
-
-	#[allow(dead_code)]
-	fn get_jumpers_white(&self) -> Mask {
-		let not_occupied = !(self.whites | self.blacks);
-		let white_kings = self.whites & self.kings;
-
-		let mut movers = 0;
-		let mut temp = (not_occupied << 4) & self.blacks;
-
-		if temp != 0 {
-			movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & self.whites;
-		}
-
-		temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.blacks;
-		movers |= (temp << 4) & self.whites;
-
-		if white_kings != 0 {
-			temp = (not_occupied >> 4) & self.blacks;
-			if temp != 0 {
-				movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5	)) & self.whites;
-			}
-			temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
-			if temp != 0 {
-				movers |= (temp >> 4) & self.whites;
+				movers
 			}
 		}
-		movers
 	}
 
 	#[allow(dead_code)]
-	fn get_jumpers_black(&self) -> Mask {
+	fn get_jumpers(&self, color: Color) -> Mask {
 		let not_occupied = !(self.whites | self.blacks);
-		let black_kings = self.blacks & self.kings;
 
-		let mut movers = 0;
-		let mut temp = (not_occupied << 4) & self.whites;
+		match color {
+			White => {
+				let white_kings = self.whites & self.kings;
 
-		if temp != 0 {
-			movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & self.blacks;
-		}
+				let mut movers = 0;
+				let mut temp = (not_occupied << 4) & self.blacks;
 
-		temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.whites;
-		movers |= (temp << 4) & self.blacks;
+				movers |= ((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5);
 
-		if black_kings != 0 {
-			temp = (not_occupied >> 4) & self.whites;
-			if temp != 0 {
-				movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5	)) & self.blacks;
+				temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.blacks;
+				movers |= temp << 4;
+
+				movers &= self.whites;
+
+				if white_kings != 0 {
+					temp = (not_occupied >> 4) & self.blacks;
+					movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5	)) & white_kings;
+					temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
+					movers |= (temp >> 4) & white_kings;
+				}
+				
+				movers
+			},
+			Black => {
+				let black_kings = self.blacks & self.kings;
+
+				let mut movers = 0;
+				let mut temp = (not_occupied >> 4) & self.whites;
+
+				movers |= ((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5);
+
+				temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.whites;
+				movers |= temp >> 4;
+
+				movers &= self.blacks;
+
+				if black_kings != 0 {
+					temp = (not_occupied << 4) & self.whites;
+					movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & black_kings;
+					temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.whites;
+					movers |= (temp << 4) & black_kings;
+				}
+
+				movers
 			}
-			temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.whites;
-			if temp != 0 {
-				movers |= (temp >> 4) & self.blacks;
-			}
 		}
-		movers
 	}
 
 
@@ -238,8 +275,8 @@ impl Bitboard {
 
 		// turn
 		out.push(match self.turn {
-			Color::Black => 'B',
-			Color::White => 'W',
+			Black => 'B',
+			White => 'W',
 		});
 
 		let write_pieces = |mut it: Mask, out: &mut String| {
@@ -275,13 +312,13 @@ impl Bitboard {
 	///
 	/// ```
 	/// use muskox::bitboard::Bitboard;
-	/// 
+	///
 	/// let board = Bitboard::new();
 	/// println!("{}", board.pretty());
 	/// ```
 	pub fn pretty(&self) -> String {
 		let mut out = String::with_capacity(1024);
-		
+
 		// maybe change this model
 		let mut blacks_iter = self.blacks;
 		let mut whites_iter = self.whites;
@@ -332,17 +369,16 @@ mod tests {
 	static BLANK_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
 	static TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
 	static TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
+	static TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
 
 	#[test]
 	fn new_from_fen_test() {
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-
 		assert_eq!(board.blacks, 0x11288800);
 		assert_eq!(board.whites, 0x0c824200);
 		assert_eq!(board.kings, 0x11204200);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-
 		assert_eq!(board.blacks, 0x81204000);
 		assert_eq!(board.whites, 0x26040500);
 		assert_eq!(board.kings, 0x82000400);
@@ -360,48 +396,72 @@ mod tests {
 	#[test]
 	fn get_movers_white_test() {
 		let board = Bitboard::new();
-		assert_eq!(board.get_movers_white(), 0x00f00000);
+		assert_eq!(board.get_movers(White), 0x00f00000);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-		assert_eq!(board.get_movers_white(), 0x04824200);
+		assert_eq!(board.get_movers(White), 0x04824200);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-		assert_eq!(board.get_movers_white(), 0x06040500);
+		assert_eq!(board.get_movers(White), 0x06040500);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+		assert_eq!(board.get_movers(White), 0x07000000);
 	}
 
 	#[test]
 	fn get_movers_black_test() {
 		let board = Bitboard::new();
-		assert_eq!(board.get_movers_black(), 0x00000f00);
+		assert_eq!(board.get_movers(Black), 0x00000f00);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-		assert_eq!(board.get_movers_black(), 0x01208000);
+		assert_eq!(board.get_movers(Black), 0x01208000);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-		assert_eq!(board.get_movers_black(), 0x81004000);
+		assert_eq!(board.get_movers(Black), 0x81004000);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+		assert_eq!(board.get_movers(Black), 0x000600e0);
 	}
 
 	#[test]
 	fn get_jumpers_white_test() {
 		let board = Bitboard::new();
-		assert_eq!(board.get_jumpers_white(), 0);
+		assert_eq!(board.get_jumpers(White), 0);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-		assert_eq!(board.get_jumpers_white(), 0);
+		assert_eq!(board.get_jumpers(White), 0);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-		assert_eq!(board.get_jumpers_white(), 0x22040400);
+		assert_eq!(board.get_jumpers(White), 0x22040400);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+		assert_eq!(board.get_jumpers(White), 0x00400404);
 	}
 
 	#[test]
 	fn get_jumpers_black_test() {
 		let board = Bitboard::new();
-		assert_eq!(board.get_jumpers_black(), 0);
+		assert_eq!(board.get_jumpers(Black), 0);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-		assert_eq!(board.get_jumpers_black(), 0);
+		assert_eq!(board.get_jumpers(Black), 0);
 
 		let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-		assert_eq!(board.get_jumpers_black(), 0x080004000);
+		assert_eq!(board.get_jumpers(Black), 0x80004000);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+		assert_eq!(board.get_jumpers(Black), 0x401000c0);  // this one is failing
+	}
+
+	#[test]
+	fn get_game_state_test() {
+		let board = Bitboard::new();
+		assert_eq!(board.get_game_state(), GameState::InProgress);
+
+		let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+		assert_eq!(board.get_game_state(), GameState::InProgress);
+
+		// need to test different ways to win / draw
+		// at least three or four others
 	}
 }
