@@ -1,11 +1,4 @@
-use smallvec::SmallVec;
-
-// not sure if 2 is the best but think so
-// u8 wastes 3 bits per move
-// also might just be able to make our own more efficient version of SmallVec
-// there might be a better way to store moves in the context of bit tables
-// this is temporary what i think the action struct may look like
-pub struct Action(SmallVec<[u8; 2]>);
+use crate::Action;
 
 type Mask = u32;
 
