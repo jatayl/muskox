@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::Action;
 use crate::ActionType;
 use crate::Direction;
@@ -149,31 +151,16 @@ impl Bitboard {
                 White => self.whites,
                 Black => self.blacks,
             };
-            color_mask >> loc % 2 != 1
+            (color_mask >> loc) % 2 == 1
         };
 
-        let is_empty = |loc: u8| self.whites >> loc % 2 != 0 && self.blacks >> loc % 2 != 0;
+        let is_empty = |loc: u8| (self.whites >> loc) % 2 == 0 && (self.blacks >> loc) % 2 == 0;
 
-        let is_king = |loc: u8| self.kings >> loc % 2 == 1;
+        let is_king = |loc: u8| (self.kings >> loc) % 2 == 1;
 
         match action.action_type() {
             ActionType::Move => {
                 let source = action.source();
-
-                // ensure that it only moves backwards if source is a king
-                // reformat the next dozen or so lines
-                let move_direction = action.move_direction().unwrap();
-
-                if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
-                        self.turn == Black && !is_king(source) {
-                    return Err("Only kings can move backwards")
-                }
-
-                if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
-                        self.turn == White && !is_king(source) {
-                    return Err("Only kings can move backwards")
-                }
-
 
                 // ensure that no jumpers are available
                 if self.get_jumpers(&self.turn) != 0 {
@@ -182,13 +169,28 @@ impl Bitboard {
 
                 // ensure that the source has turn color
                 if !coloring_eq(source, &self.turn) {
-                    return Err("Source must be occupied by the actor");
+                    return Err("Source must be occupied by the actor!");
                 }
 
                 // ensure that destination is empty.
                 if !is_empty(action.destination()) {
                     return Err("Destination must be empty!");
                 }
+
+                // ensure that it only moves backwards if source is a king
+                // reformat the next dozen or so lines
+                let move_direction = action.move_direction().unwrap();
+
+                if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
+                        self.turn == Black && !is_king(source) {
+                    return Err("Only kings can move backwards!")
+                }
+
+                if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
+                        self.turn == White && !is_king(source) {
+                    return Err("Only kings can move backwards!")
+                }
+
             },
             ActionType::Jump => (),
         }
@@ -227,7 +229,7 @@ impl Bitboard {
                 let will_be_king = {
                     let row = destination / 4;
                     // will be a king if it was a king or will be in end row next
-                    board_p.kings >> source % 2 == 1 || row == 0 || row == 7
+                    (board_p.kings >> source) % 2 == 1 || row == 0 || row == 7
                 };
 
                 // erase color from source
@@ -238,6 +240,9 @@ impl Bitboard {
             },
             ActionType::Jump => (),
         }
+
+        // sketchy way of flipping the turn color enum
+        board_p.turn = unsafe { mem::transmute((board_p.turn as u8 + 1) % 2) };
 
         Ok(board_p)
     }
@@ -334,7 +339,6 @@ impl Bitboard {
             }
         }
     }
-
 
     /// Creates string FEN tag according to Portable Draughts Notation (PDN). Read more
     /// about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
@@ -449,6 +453,7 @@ mod tests {
     static TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
     static TEST_BOARD_4: &'static str = "B:WK11,3:B";
     static TEST_BOARD_5: &'static str = "W:B:W";
+    static TEST_BOARD_6: &'static str = "W:B11:W6";
 
     #[test]
     fn new_from_fen_test() {
@@ -553,5 +558,62 @@ mod tests {
 
         let board = Bitboard::new_from_fen(TEST_BOARD_5).unwrap();
         assert_eq!(board.get_game_state(), GameState::Completed(Winner::Player(Black)));
+    }
+
+    #[test]
+    fn validate_action_move_test() {
+        let board = Bitboard::new();
+        let action = Action::new_from_movetext("10-14").unwrap();
+        assert_eq!(board.validate_action(&action), Ok(()));
+        let action = Action::new_from_movetext("23-18").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Source must be occupied by the actor!"));
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let action = Action::new_from_movetext("16-19").unwrap();
+        assert_eq!(board.validate_action(&action), Ok(()));
+        let action = Action::new_from_movetext("22-17").unwrap();
+        assert_eq!(board.validate_action(&action), Ok(()));
+        let action = Action::new_from_movetext("12-8").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+        let action = Action::new_from_movetext("22-18").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Destination must be empty!"));
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::new_from_movetext("9-6").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Have to jump a piece!"));
+    }
+
+    #[test]
+    fn take_action_move_test() {
+        let board = Bitboard::new();
+        let action = Action::new_from_movetext("10-14").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.whites, 0xfff00000);
+        assert_eq!(board_p.blacks, 0x00002dff);
+        assert_eq!(board_p.kings, 0);
+        assert_eq!(board_p.turn, White);
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let action = Action::new_from_movetext("16-19").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x112c0800);
+        assert_eq!(board_p.whites, 0x0c824200);
+        assert_eq!(board_p.kings, 0x11204200);
+
+        // king moving backwards
+        let action = Action::new_from_movetext("22-17").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x11098800);
+        assert_eq!(board_p.whites, 0x0c824200);
+        assert_eq!(board_p.kings, 0x11014200);
+        
+        // kinging of single piece
+        let board = Bitboard::new_from_fen(TEST_BOARD_6).unwrap();
+        let action = Action::new_from_movetext("6-2").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x00000400);
+        assert_eq!(board_p.whites, 0x00000002);
+        assert_eq!(board_p.kings, 0x00000002);
+        assert_eq!(board_p.turn, Black);
     }
 }
