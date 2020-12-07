@@ -1,4 +1,6 @@
 use crate::Action;
+use crate::ActionType;
+use crate::Direction;
 
 type Mask = u32;
 
@@ -7,7 +9,9 @@ static MASK_L5: Mask = 0x00e0e0e0;
 static MASK_R3: Mask = 0xe0e0e0e0;
 static MASK_R5: Mask = 0x07070700;
 
-#[derive(Debug, PartialEq)]
+// maybe want to consider making a piece enum so we can abstract the king
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Color {
     Black,
     White,
@@ -26,6 +30,7 @@ pub enum GameState {
     InProgress,
 }
 
+#[derive(Clone, Copy)]
 pub struct Bitboard {
     blacks: Mask,
     whites: Mask,
@@ -119,10 +124,10 @@ impl Bitboard {
 
     pub fn get_game_state(&self) -> GameState {
         // check if somebody can't move
-        if self.turn == Black && self.get_movers(Black) == 0 && self.get_jumpers(Black) == 0 {
+        if self.turn == Black && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
             return GameState::Completed(Winner::Player(White));
         }
-        if self.turn == White && self.get_movers(White) == 0 && self.get_jumpers(White) == 0 {
+        if self.turn == White && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
             return GameState::Completed(Winner::Player(Black));
         }
 
@@ -136,22 +141,111 @@ impl Bitboard {
         GameState::InProgress
     }
 
-    pub fn is_valid_move(&self, _action: &Action) -> bool {
-        true
-    }
+    pub fn validate_action(&self, action: &Action) -> Result<(), &'static str> {
+        // package into lambdas
 
-    pub fn make_move(&self, action: &Action) -> Result<Bitboard, &'static str> {
-        if !self.is_valid_move(&action) {
-            return Err("Invalid move")
+        let coloring_eq = |loc: u8, color: &Color| {
+            let color_mask = match color {
+                White => self.whites,
+                Black => self.blacks,
+            };
+            color_mask >> loc % 2 != 1
+        };
+
+        let is_empty = |loc: u8| self.whites >> loc % 2 != 0 && self.blacks >> loc % 2 != 0;
+
+        let is_king = |loc: u8| self.kings >> loc % 2 == 1;
+
+        match action.action_type() {
+            ActionType::Move => {
+                let source = action.source();
+
+                // ensure that it only moves backwards if source is a king
+                // reformat the next dozen or so lines
+                let move_direction = action.move_direction().unwrap();
+
+                if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
+                        self.turn == Black && !is_king(source) {
+                    return Err("Only kings can move backwards")
+                }
+
+                if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
+                        self.turn == White && !is_king(source) {
+                    return Err("Only kings can move backwards")
+                }
+
+
+                // ensure that no jumpers are available
+                if self.get_jumpers(&self.turn) != 0 {
+                    return Err("Have to jump a piece!");
+                }
+
+                // ensure that the source has turn color
+                if !coloring_eq(source, &self.turn) {
+                    return Err("Source must be occupied by the actor");
+                }
+
+                // ensure that destination is empty.
+                if !is_empty(action.destination()) {
+                    return Err("Destination must be empty!");
+                }
+            },
+            ActionType::Jump => (),
         }
 
-        Ok(Bitboard::new())
+        Ok(())
+    }
+
+    pub fn take_action(&self, action: &Action) -> Result<Bitboard, &'static str> {
+        self.validate_action(action)?;
+
+        let remove_piece = |loc: u8, board: &mut Bitboard| {
+            let mask = !(1 << loc);
+            board.whites &= mask;
+            board.blacks &= mask;
+            board.kings &= mask;
+        };
+
+        let add_piece = |loc: u8, color: &Color, is_king: bool, board: &mut Bitboard| {
+            let mask = 1 << loc;
+            match color {
+                Black => board.blacks |= mask,
+                White => board.whites |= mask,
+            };
+            if is_king {
+                board.kings |= mask;
+            }
+        };
+
+        let mut board_p = self.clone();
+
+        match action.action_type() {
+            ActionType::Move => {
+                let source = action.source();
+                let destination = action.destination();
+
+                let will_be_king = {
+                    let row = destination / 4;
+                    // will be a king if it was a king or will be in end row next
+                    board_p.kings >> source % 2 == 1 || row == 0 || row == 7
+                };
+
+                // erase color from source
+                remove_piece(source, &mut board_p);
+
+                // add color to destination
+                add_piece(destination, &self.turn, will_be_king, &mut board_p);
+            },
+            ActionType::Jump => (),
+        }
+
+        Ok(board_p)
     }
 
     /// Returns a u32 mask that represents all of the white pieces that can move.
     /// Recognize that this does not include the white pieces that can jump. To
     /// access those use `get_jumpers_white`.
-    fn get_movers(&self, color: Color) -> Mask {
+    fn get_movers(&self, color: &Color) -> Mask {
         let not_occupied = !(self.whites | self.blacks);
 
         match color {
@@ -190,7 +284,7 @@ impl Bitboard {
         }
     }
 
-    fn get_jumpers(&self, color: Color) -> Mask {
+    fn get_jumpers(&self, color: &Color) -> Mask {
         let not_occupied = !(self.whites | self.blacks);
 
         match color {
@@ -389,61 +483,61 @@ mod tests {
     #[test]
     fn get_movers_white_test() {
         let board = Bitboard::new();
-        assert_eq!(board.get_movers(White), 0x00f00000);
+        assert_eq!(board.get_movers(&White), 0x00f00000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        assert_eq!(board.get_movers(White), 0x04824200);
+        assert_eq!(board.get_movers(&White), 0x04824200);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        assert_eq!(board.get_movers(White), 0x06040500);
+        assert_eq!(board.get_movers(&White), 0x06040500);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        assert_eq!(board.get_movers(White), 0x07000000);
+        assert_eq!(board.get_movers(&White), 0x07000000);
     }
 
     #[test]
     fn get_movers_black_test() {
         let board = Bitboard::new();
-        assert_eq!(board.get_movers(Black), 0x00000f00);
+        assert_eq!(board.get_movers(&Black), 0x00000f00);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        assert_eq!(board.get_movers(Black), 0x01208000);
+        assert_eq!(board.get_movers(&Black), 0x01208000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        assert_eq!(board.get_movers(Black), 0x81004000);
+        assert_eq!(board.get_movers(&Black), 0x81004000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        assert_eq!(board.get_movers(Black), 0x000600e0);
+        assert_eq!(board.get_movers(&Black), 0x000600e0);
     }
 
     #[test]
     fn get_jumpers_white_test() {
         let board = Bitboard::new();
-        assert_eq!(board.get_jumpers(White), 0);
+        assert_eq!(board.get_jumpers(&White), 0);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        assert_eq!(board.get_jumpers(White), 0);
+        assert_eq!(board.get_jumpers(&White), 0);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        assert_eq!(board.get_jumpers(White), 0x22040400);
+        assert_eq!(board.get_jumpers(&White), 0x22040400);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        assert_eq!(board.get_jumpers(White), 0x00400404);
+        assert_eq!(board.get_jumpers(&White), 0x00400404);
     }
 
     #[test]
     fn get_jumpers_black_test() {
         let board = Bitboard::new();
-        assert_eq!(board.get_jumpers(Black), 0);
+        assert_eq!(board.get_jumpers(&Black), 0);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        assert_eq!(board.get_jumpers(Black), 0);
+        assert_eq!(board.get_jumpers(&Black), 0);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        assert_eq!(board.get_jumpers(Black), 0x80004000);
+        assert_eq!(board.get_jumpers(&Black), 0x80004000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        assert_eq!(board.get_jumpers(Black), 0x401000c0);  // this one is failing
+        assert_eq!(board.get_jumpers(&Black), 0x401000c0);  // this one is failing
     }
 
     #[test]
