@@ -144,8 +144,15 @@ impl Bitboard {
     }
 
     pub fn validate_action(&self, action: &Action) -> Result<(), &'static str> {
-        // package into lambdas
+        self.take_action(&action)?;
+        Ok(())
+    }
 
+    pub fn take_action(&self, action: &Action) -> Result<Bitboard, &'static str> {
+        // this is an epic monolith of a function. need to break it into smaller methods/
+        // and apply clever techniques such as bitshifting and more rust like stuff.
+
+        // make some of these lambdas private methods
         let coloring_eq = |loc: u8, color: &Color| {
             let color_mask = match color {
                 White => self.whites,
@@ -156,9 +163,48 @@ impl Bitboard {
 
         let is_empty = |loc: u8| (self.whites >> loc) % 2 == 0 && (self.blacks >> loc) % 2 == 0;
 
+        let remove_piece = |loc: u8, board: &mut Bitboard| {
+            let mask = !(1 << loc);
+            board.whites &= mask;
+            board.blacks &= mask;
+            board.kings &= mask;
+        };
+
+        let add_piece = |loc: u8, color: &Color, is_king: bool, board: &mut Bitboard| {
+            let mask = 1 << loc;
+            match color {
+                Black => board.blacks |= mask,
+                White => board.whites |= mask,
+            };
+            if is_king {
+                board.kings |= mask;
+            }
+        };
         let is_king = |loc: u8| (self.kings >> loc) % 2 == 1;
 
+
+        let mut board_p = self.clone();
+
         let source = action.source();
+        let destination = action.destination();
+
+        let starts_as_king = is_king(source);
+
+        let ends_as_king = {
+            let dest_row = destination / 4;
+            // will be a king if it was a king or will be in end row last
+            starts_as_king || dest_row == 0 || dest_row == 7
+        };
+
+        // sketchy way of flipping the turn color enum
+        // maybe just match with the opposite color instead
+        let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+
+        // erase color from source
+        remove_piece(source, &mut board_p);
+
+        // add color to destination
+        add_piece(destination, &self.turn, ends_as_king, &mut board_p);
 
         // ensure that the source has turn color
         if !coloring_eq(source, &self.turn) {
@@ -190,97 +236,66 @@ impl Bitboard {
                         self.turn == White && !is_king(source) {
                     return Err("Only kings can move backwards!")
                 }
-
             },
+
             ActionType::Jump => {
-                // ensure that only jump backwards if it is a king
-                // ensure that if it jumps to an end spot it does not keep jumping if not king
-                // ensure that it actually jumps over another piece that is not its own color
-                // ensure that it there isnt another jump for it to do
-            },
-        }
+                let mut curr = source;
+                // maybe make a jump iterator. that would be super cool!
+                for i in 0..action.jump_len() {
+                    let jump_direction = action.jump_direction(i).unwrap();
 
-        Ok(())
-    }
-
-    pub fn take_action(&self, action: &Action) -> Result<Bitboard, &'static str> {
-        self.validate_action(action)?;
-
-        let remove_piece = |loc: u8, board: &mut Bitboard| {
-            let mask = !(1 << loc);
-            board.whites &= mask;
-            board.blacks &= mask;
-            board.kings &= mask;
-        };
-
-        let add_piece = |loc: u8, color: &Color, is_king: bool, board: &mut Bitboard| {
-            let mask = 1 << loc;
-            match color {
-                Black => board.blacks |= mask,
-                White => board.whites |= mask,
-            };
-            if is_king {
-                board.kings |= mask;
-            }
-        };
-
-        let mut board_p = self.clone();
-
-        let source = action.source();
-        let destination = action.destination();
-
-        let will_be_king = {
-            let dest_row = destination / 4;
-            // will be a king if it was a king or will be in end row last
-            (self.kings >> source) % 2 == 1 || dest_row == 0 || dest_row == 7
-        };
-
-        // erase color from source
-        remove_piece(source, &mut board_p);
-
-        // add color to destination
-        add_piece(destination, &self.turn, will_be_king, &mut board_p);
-
-        // if this was a jump move, need to remove all of the skipped over pieces
-        if action.action_type() == ActionType::Jump {
-            let mut curr = source;
-            // maybe make a jump iterator. that would be super cool!
-            for i in 0..action.jump_len() {
-                let jump_direction = action.jump_direction(i).unwrap();
-
-                // see if we can try to use bitmasking to get this next time
-                let skipped_over = {
-                    if source / 4 % 2 == 0 {  // even rows
-                        match jump_direction {
-                            Direction::UpLeft => curr - 4,
-                            Direction::UpRight => curr - 3,
-                            Direction::DownLeft => curr + 4,
-                            Direction::DownRight => curr + 5,
-                        }
-                    } else {  // odd rows
-                        match jump_direction {
-                            Direction::UpLeft => curr - 5,
-                            Direction::UpRight => curr - 4,
-                            Direction::DownLeft => curr + 3,
-                            Direction::DownRight => curr + 4,
-                        }
+                    // ensure that only jump backwards if it is a king
+                    if (jump_direction == Direction::UpLeft || jump_direction == Direction::UpRight) &&
+                            self.turn == Black && !starts_as_king {
+                        return Err("Only kings can move backwards!")
                     }
-                };  // need to get that skipped over piece...
 
-                remove_piece(skipped_over, &mut board_p);
+                    if (jump_direction == Direction::DownLeft || jump_direction == Direction::DownRight) &&
+                            self.turn == White && !starts_as_king {
+                        return Err("Only kings can move backwards!")
+                    }
 
-                curr = match jump_direction {
-                    Direction::UpLeft => curr - 9,
-                    Direction::UpRight => curr - 7,
-                    Direction::DownLeft => curr + 7,
-                    Direction::DownRight => curr + 9,
-                };
+                    // see if we can try to use bitmasking to get this next time
+                    let skipped_over = {
+                        if source / 4 % 2 == 0 {  // even rows
+                            match jump_direction {
+                                Direction::UpLeft => curr - 4,
+                                Direction::UpRight => curr - 3,
+                                Direction::DownLeft => curr + 4,
+                                Direction::DownRight => curr + 5,
+                            }
+                        } else {  // odd rows
+                            match jump_direction {
+                                Direction::UpLeft => curr - 5,
+                                Direction::UpRight => curr - 4,
+                                Direction::DownLeft => curr + 3,
+                                Direction::DownRight => curr + 4,
+                            }
+                        }
+                    };  // need to get that skipped over piece...
+
+                    // ensure that it actually jumps over another piece that is not its own color
+                    if !coloring_eq(skipped_over, &opponent_color) {
+                        return Err("You can only skip over a square with an opponent on it!");
+                    }
+
+                    remove_piece(skipped_over, &mut board_p);
+
+                    curr = match jump_direction {
+                        Direction::UpLeft => curr - 9,
+                        Direction::UpRight => curr - 7,
+                        Direction::DownLeft => curr + 7,
+                        Direction::DownRight => curr + 9,
+                    };
+                }
+                // ensure that it there isnt another jump for it to do at destination
+                if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(starts_as_king ^ ends_as_king) {
+                    return Err("Need to keep jumping!");
+                }
             }
         }
 
-        // sketchy way of flipping the turn color enum
-        // maybe just match with the opposite color instead
-        board_p.turn = unsafe { mem::transmute((board_p.turn as u8 + 1) % 2) };
+        board_p.turn = opponent_color;
 
         Ok(board_p)
     }
@@ -346,7 +361,7 @@ impl Bitboard {
 
                 if white_kings != 0 {
                     temp = (not_occupied >> 4) & self.blacks;
-                    movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5    )) & white_kings;
+                    movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5)) & white_kings;
                     temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
                     movers |= (temp >> 4) & white_kings;
                 }
@@ -678,7 +693,7 @@ mod tests {
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
         let action = Action::new_from_movetext("21-30").unwrap();
-        let board_p = board.take_action(&action).unwrap();   // this will likely fail
+        let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x600600e0);
         assert_eq!(board_p.whites, 0x06400404);
         assert_eq!(board_p.kings, 0x60000004);
