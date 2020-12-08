@@ -53,7 +53,7 @@ impl Action {
                     -7 => Direction::UpRight,
                     7 => Direction::DownLeft,
                     9 => Direction::DownRight,
-                    _ => return Err("Invalid jump!"),
+                    _ => return Err("Invalid move!"),
                 };
 
                 let shift = i * 2 + 15;
@@ -90,7 +90,7 @@ impl Action {
     }
 
     #[inline]
-    pub fn direction(&self, i: u8) -> Option<Direction> {
+    pub fn jump_direction(&self, i: u8) -> Option<Direction> {
         // maybe rename to jump_direction
         if i >= self.jump_len() {
             return None
@@ -107,7 +107,8 @@ impl Action {
         }
     }
 
-    #[inline]
+    // currently too bit for inline. try to pare this down a bit
+    // #[inline]
     pub fn move_direction(&self) -> Option<Direction> {
         // ideally would like to condense this method
         // also check logic again soon
@@ -119,6 +120,7 @@ impl Action {
         let source = self.source();
         let destination = self.destination();
         let diff = (destination as i8) - (source as i8);
+        // see if we can use shifting and bitmasks to make it most efficient!
         if source / 4 % 2 == 0 {  // even rows
             return match diff {
                 -4 => Some(Direction::UpLeft),
@@ -172,17 +174,17 @@ mod tests {
     #[test]
     fn direction_test() {
         let action = Action::new_from_movetext(TEST_MOVE_1).unwrap();
-        assert_eq!(action.direction(0), Some(Direction::DownRight));
-        assert_eq!(action.direction(1), Some(Direction::DownLeft));
-        assert_eq!(action.direction(2), None);
+        assert_eq!(action.jump_direction(0), Some(Direction::DownRight));
+        assert_eq!(action.jump_direction(1), Some(Direction::DownLeft));
+        assert_eq!(action.jump_direction(2), None);
 
         let action = Action::new_from_movetext(TEST_MOVE_2).unwrap();
-        assert_eq!(action.direction(0), None);
+        assert_eq!(action.jump_direction(0), None);
 
         let action = Action::new_from_movetext(TEST_MOVE_3).unwrap();
-        assert_eq!(action.direction(1), Some(Direction::UpRight));
-        assert_eq!(action.direction(2), Some(Direction::UpLeft));
-        assert_eq!(action.direction(4), None);
+        assert_eq!(action.jump_direction(1), Some(Direction::UpRight));
+        assert_eq!(action.jump_direction(2), Some(Direction::UpLeft));
+        assert_eq!(action.jump_direction(4), None);
     }
 
     #[test]

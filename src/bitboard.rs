@@ -158,23 +158,23 @@ impl Bitboard {
 
         let is_king = |loc: u8| (self.kings >> loc) % 2 == 1;
 
+        let source = action.source();
+
+        // ensure that the source has turn color
+        if !coloring_eq(source, &self.turn) {
+            return Err("Source must be occupied by the actor!");
+        }
+
+        // ensure that destination is empty.
+        if !is_empty(action.destination()) {
+            return Err("Destination must be empty!");
+        }
+
         match action.action_type() {
             ActionType::Move => {
-                let source = action.source();
-
                 // ensure that no jumpers are available
                 if self.get_jumpers(&self.turn) != 0 {
                     return Err("Have to jump a piece!");
-                }
-
-                // ensure that the source has turn color
-                if !coloring_eq(source, &self.turn) {
-                    return Err("Source must be occupied by the actor!");
-                }
-
-                // ensure that destination is empty.
-                if !is_empty(action.destination()) {
-                    return Err("Destination must be empty!");
                 }
 
                 // ensure that it only moves backwards if source is a king
@@ -192,7 +192,12 @@ impl Bitboard {
                 }
 
             },
-            ActionType::Jump => (),
+            ActionType::Jump => {
+                // ensure that only jump backwards if it is a king
+                // ensure that if it jumps to an end spot it does not keep jumping if not king
+                // ensure that it actually jumps over another piece that is not its own color
+                // ensure that it there isnt another jump for it to do
+            },
         }
 
         Ok(())
@@ -221,27 +226,60 @@ impl Bitboard {
 
         let mut board_p = self.clone();
 
-        match action.action_type() {
-            ActionType::Move => {
-                let source = action.source();
-                let destination = action.destination();
+        let source = action.source();
+        let destination = action.destination();
 
-                let will_be_king = {
-                    let row = destination / 4;
-                    // will be a king if it was a king or will be in end row next
-                    (board_p.kings >> source) % 2 == 1 || row == 0 || row == 7
+        let will_be_king = {
+            let dest_row = destination / 4;
+            // will be a king if it was a king or will be in end row last
+            (self.kings >> source) % 2 == 1 || dest_row == 0 || dest_row == 7
+        };
+
+        // erase color from source
+        remove_piece(source, &mut board_p);
+
+        // add color to destination
+        add_piece(destination, &self.turn, will_be_king, &mut board_p);
+
+        // if this was a jump move, need to remove all of the skipped over pieces
+        if action.action_type() == ActionType::Jump {
+            let mut curr = source;
+            // maybe make a jump iterator. that would be super cool!
+            for i in 0..action.jump_len() {
+                let jump_direction = action.jump_direction(i).unwrap();
+
+                // see if we can try to use bitmasking to get this next time
+                let skipped_over = {
+                    if source / 4 % 2 == 0 {  // even rows
+                        match jump_direction {
+                            Direction::UpLeft => curr - 4,
+                            Direction::UpRight => curr - 3,
+                            Direction::DownLeft => curr + 4,
+                            Direction::DownRight => curr + 5,
+                        }
+                    } else {  // odd rows
+                        match jump_direction {
+                            Direction::UpLeft => curr - 5,
+                            Direction::UpRight => curr - 4,
+                            Direction::DownLeft => curr + 3,
+                            Direction::DownRight => curr + 4,
+                        }
+                    }
+                };  // need to get that skipped over piece...
+
+                remove_piece(skipped_over, &mut board_p);
+
+                curr = match jump_direction {
+                    Direction::UpLeft => curr - 9,
+                    Direction::UpRight => curr - 7,
+                    Direction::DownLeft => curr + 7,
+                    Direction::DownRight => curr + 9,
                 };
-
-                // erase color from source
-                remove_piece(source, &mut board_p);
-
-                // add color to destination
-                add_piece(destination, &self.turn, will_be_king, &mut board_p);
-            },
-            ActionType::Jump => (),
+            }
         }
 
         // sketchy way of flipping the turn color enum
+        // maybe just match with the opposite color instead
         board_p.turn = unsafe { mem::transmute((board_p.turn as u8 + 1) % 2) };
 
         Ok(board_p)
@@ -454,6 +492,7 @@ mod tests {
     static TEST_BOARD_4: &'static str = "B:WK11,3:B";
     static TEST_BOARD_5: &'static str = "W:B:W";
     static TEST_BOARD_6: &'static str = "W:B11:W6";
+    static TEST_BOARD_7: &'static str = "B:W11,18,26,27:B8";
 
     #[test]
     fn new_from_fen_test() {
@@ -615,5 +654,40 @@ mod tests {
         assert_eq!(board_p.whites, 0x00000002);
         assert_eq!(board_p.kings, 0x00000002);
         assert_eq!(board_p.turn, Black);
+    }
+
+    // #[test]
+    // fn validate_action_jump_test() {
+
+    // }
+
+    #[test]
+    fn take_action_jump_test() {
+        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::new_from_movetext("11-18").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x81200000);
+        assert_eq!(board_p.whites, 0x26060100);
+        assert_eq!(board_p.kings, 0x82020000);
+
+        let action = Action::new_from_movetext("19-10").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x81200000);
+        assert_eq!(board_p.whites, 0x26000700);
+        assert_eq!(board_p.kings, 0x82000400);
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let action = Action::new_from_movetext("21-30").unwrap();
+        let board_p = board.take_action(&action).unwrap();   // this will likely fail
+        assert_eq!(board_p.blacks, 0x600600e0);
+        assert_eq!(board_p.whites, 0x06400404);
+        assert_eq!(board_p.kings, 0x60000004);
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_7).unwrap();
+        let action = Action::new_from_movetext("8-15-22-31").unwrap();
+        let board_p = board.take_action(&action).unwrap();
+        assert_eq!(board_p.blacks, 0x40000000);
+        assert_eq!(board_p.whites, 0x04000000);
+        assert_eq!(board_p.kings, 0x40000000);
     }
 }
