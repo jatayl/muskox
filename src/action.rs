@@ -3,6 +3,7 @@ use std::mem;
 
 // need lookup table for square index for next direction
 
+/// Represents one of the four directions one can move in the game of checkers
 #[derive(Debug, PartialEq)]
 pub enum Direction {
     UpLeft,
@@ -11,6 +12,7 @@ pub enum Direction {
     DownRight,
 }
 
+/// Represents one of the two types of moves that exist in checkers
 #[derive(Debug, PartialEq)]
 pub enum ActionType {
     Move,
@@ -18,9 +20,23 @@ pub enum ActionType {
 }
 
 // source: 5, destination: 5, jump length: 5, jump directions: 8 * 2 bits (four directions), unused: 1
+/// Represents an action that can be made on a checkerboard
 pub struct Action(u32);
 
 impl Action {
+    /// Creates a new checkers action from a vector of positions.
+    ///
+    /// # Arguments
+    ///
+    /// * `positions` - A vector of standard position numbers representing a move
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::Action;
+    ///
+    /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
+    /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     pub fn new_from_vector(positions: Vec<u8>) -> Result<Action, &'static str> {
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
@@ -64,6 +80,21 @@ impl Action {
         Ok(Action(data))
     }
 
+    /// Creates a new checkers action from a string movetext according to Portable Draughts Notation.
+    /// (PDN). Read more about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
+    ///
+    /// # Arguments
+    ///
+    /// * `movetext` - A string slice that that represents movetext written for PDN notation
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::Action;
+    ///
+    /// let action = Action::new_from_movetext("19-24").unwrap();
+    /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
+    /// ```
     pub fn new_from_movetext(movetext: &str) -> Result<Action, &'static str> {
         let positions: Vec<_> = movetext.split("-")
             .map(|x| x.parse::<u8>().expect("Not valid board square"))
@@ -72,23 +103,33 @@ impl Action {
         Action::new_from_vector(positions)
     }
 
-    // getters
-
+    /// Returns the starting location of a particular action
     #[inline]
     pub fn source(&self) -> u8 {
         (self.0 & 31) as u8
     }
 
+    /// Returns the ending location of a particular action
     #[inline]
     pub fn destination(&self) -> u8 {
         ((self.0 >> 5) & 31) as u8
     }
 
+    /// Returns how many leaps were made in a particular action
     #[inline]
     pub fn jump_len(&self) -> u8 {
         ((self.0 >> 10) & 15) as u8
     }
 
+    /// Returns the direction of a particular jump
+    ///
+    /// This is wrapped in an option, because if no jumps were performed then
+    /// no jump directions can be retrieved (`None`).
+    ///
+    /// # Arguments
+    ///
+    /// * `i` - The index of the jump to find the direction for
+    ///
     #[inline]
     pub fn jump_direction(&self, i: u8) -> Option<Direction> {
         // maybe rename to jump_direction
@@ -99,6 +140,7 @@ impl Action {
         Some(unsafe { mem::transmute(val as u8) })
     }
 
+    /// Returns the type of a particular action
     #[inline]
     pub fn action_type(&self) -> ActionType {
         match self.jump_len() {
@@ -107,6 +149,10 @@ impl Action {
         }
     }
 
+    /// Returns the direction of a move action.
+    ///
+    /// This is also wrapped in an option, because if the action represents a
+    /// jump, then a notion of a move direction is not relevant.
     // currently too bit for inline. try to pare this down a bit
     // #[inline]
     pub fn move_direction(&self) -> Option<Direction> {

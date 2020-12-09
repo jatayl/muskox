@@ -13,6 +13,7 @@ static MASK_R5: Mask = 0x07070700;
 
 // maybe want to consider making a piece enum so we can abstract the king
 
+/// Represents of the two colors that exists on a checkerboard
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Color {
     Black,
@@ -20,18 +21,23 @@ pub enum Color {
 }
 use Color::*;
 
+/// Represents a winner of a checkers game. The winner can either be a particular
+/// player (denoted by [Color](enum.Color.html)) or a draw
 #[derive(Debug, PartialEq)]
 pub enum Winner {
     Player(Color),
     Draw
 }
 
+/// Represents the current state of a chess game. It is either completed with a 
+/// [winner](enum.Winner.html) or still in progress.
 #[derive(Debug, PartialEq)]
 pub enum GameState {
     Completed(Winner),
     InProgress,
 }
 
+/// Represents a single state of a checkerboard
 #[derive(Clone, Copy)]
 pub struct Bitboard {
     blacks: Mask,
@@ -41,6 +47,7 @@ pub struct Bitboard {
 }
 
 impl Bitboard {
+    /// Creates a new bitboard in the default, starting position
     pub fn new() -> Bitboard {
         // initial state for a blank board
         Bitboard {
@@ -62,9 +69,9 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::bitboard::Bitboard;
+    /// use muskox::Bitboard;
     ///
-    /// let b = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
+    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
     /// ```
     pub fn new_from_fen(fen_string: &str) -> Result<Bitboard, &'static str> {
@@ -124,6 +131,17 @@ impl Bitboard {
         Ok(Bitboard{ blacks, whites, kings, turn })
     }
 
+    /// Returns a [GameState](enum.GameState.html) enum that contains information about the
+    /// state of the game on the current bitboard.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::Bitboard;
+    ///
+    /// let board = Bitboard::new();
+    /// assert_eq!(board.get_game_state(), GameState::InProgress);
+    /// ```
     pub fn get_game_state(&self) -> GameState {
         // check if somebody can't move
         if self.turn == Black && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
@@ -143,11 +161,60 @@ impl Bitboard {
         GameState::InProgress
     }
 
+    /// Determines whether a certain action is valid or not.
+    ///
+    /// This information is encoded in a rust `Result`. If the action is valid, `Ok(())`
+    /// is returned; if not, then the `Err` option is returned wrapping a string with an
+    /// error message as to why the result is not valid.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - An [action](muskox/action/struct.Action.html) representing the particular
+    /// move to validate
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::{Bitboard, Action};
+    ///
+    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+    ///
+    /// let action = Action::new_from_movetext("22-17").unwrap();
+    /// assert_eq!(board.validate_action(&action), Ok(()));
+    ///
+    /// let action = Action::new_from_movetext("12-8").unwrap();
+    /// assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+    /// ```
     pub fn validate_action(&self, action: &Action) -> Result<(), &'static str> {
         self.take_action(&action)?;
         Ok(())
     }
 
+    /// Returns the ensuing bitboard after making a particular action by a player.
+    ///
+    /// This information is also encoded in a rust `Result`. If the action is valid, `Ok`
+    /// wrapping the resultant bitboard is returned; if not, then the `Err` option is returned
+    /// wrapping a string with an error message as to why the result is not valid.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - An [action](muskox/action/struct.Action.html) representing the particular
+    /// move to take
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::{Bitboard, Action};
+    ///
+    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+    ///
+    /// let action = Action::new_from_movetext("22-17").unwrap();
+    /// let board_p = Bit::new_from_fen("W:WK10,K15,18,24,27,28:B12,16,K17,20,K25,K29").unwrap();
+    /// assert_eq!(board.take_action(&action), Ok(board_p);
+    ///
+    /// let action = Action::new_from_movetext("12-8").unwrap();
+    /// assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+    /// ```
     pub fn take_action(&self, action: &Action) -> Result<Bitboard, &'static str> {
         // this is an epic monolith of a function. need to break it into smaller methods/
         // and apply clever techniques such as bitshifting and more rust like stuff.
@@ -302,7 +369,7 @@ impl Bitboard {
 
     /// Returns a u32 mask that represents all of the white pieces that can move.
     /// Recognize that this does not include the white pieces that can jump. To
-    /// access those use `get_jumpers_white`.
+    /// access those use `get_jumpers`.
     fn get_movers(&self, color: &Color) -> Mask {
         let not_occupied = !(self.whites | self.blacks);
 
@@ -342,6 +409,9 @@ impl Bitboard {
         }
     }
 
+    /// Returns a u32 mask that represents all of the white pieces that can jump.
+    /// Recognize that this does not include the white pieces that can move. To
+    /// access those use `get_movers`.
     fn get_jumpers(&self, color: &Color) -> Mask {
         let not_occupied = !(self.whites | self.blacks);
 
