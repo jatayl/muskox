@@ -289,7 +289,7 @@ impl Bitboard {
                     };
                 }
                 // ensure that it there isnt another jump for it to do at destination
-                if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(starts_as_king ^ ends_as_king) {
+                if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(!starts_as_king & ends_as_king) {
                     return Err("Need to keep jumping!");
                 }
             }
@@ -671,10 +671,25 @@ mod tests {
         assert_eq!(board_p.turn, Black);
     }
 
-    // #[test]
-    // fn validate_action_jump_test() {
+    #[test]
+    fn validate_action_jump_test() {
+        // need to show failure for jumping over own piece and blank space
+        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::new_from_movetext("30-21").unwrap();
+        assert_eq!(board.validate_action(&action), Ok(()));
+        let action = Action::new_from_movetext("30-23").unwrap();
+        assert_eq!(board.validate_action(&action), Err("You can only skip over a square with an opponent on it!"));
+        let action = Action::new_from_movetext("27-20").unwrap();
+        assert_eq!(board.validate_action(&action), Err("You can only skip over a square with an opponent on it!"));
 
-    // }
+        let board = Bitboard::new_from_fen(TEST_BOARD_7).unwrap();
+        let action = Action::new_from_movetext("8-15-22").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Need to keep jumping!"));  // this is wrong
+        let action = Action::new_from_movetext("8-15-22-31").unwrap();
+        assert_eq!(board.validate_action(&action), Ok(()));
+        let action = Action::new_from_movetext("8-15-22-31-24").unwrap();
+        assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+    }
 
     #[test]
     fn take_action_jump_test() {
