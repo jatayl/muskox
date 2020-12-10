@@ -3,6 +3,8 @@ use std::mem;
 use crate::Action;
 use crate::ActionType;
 use crate::Direction;
+use crate::error::ActionError;
+use crate::error::ParseBoardError;
 
 type Mask = u32;
 
@@ -74,7 +76,7 @@ impl Bitboard {
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
     /// ```
-    pub fn new_from_fen(fen_string: &str) -> Result<Bitboard, &'static str> {
+    pub fn new_from_fen(fen_string: &str) -> Result<Bitboard, ParseBoardError> {
         // maybe clean up errors handling here. they are rather rigid could make them more useful
 
         let fen_string: String = fen_string.chars().filter(|c| !c.is_whitespace()).collect();
@@ -82,13 +84,13 @@ impl Bitboard {
         let d: Vec<_> = fen_string.split(":").collect();
 
         if d.len() != 3 {
-            return Err("There should be two ':'s in the FEN string!")
+            return Err(ParseBoardError::ColonQuantityError);
         }
 
         let turn = match d[0] {
             "B" => Black,
             "W" => White,
-            _ => return Err("Not a valid turn color!"),
+            ltr => return Err(ParseBoardError::ColorError { letter: ltr.to_string() }),
         };
 
         let mut blacks: Mask = 0;
@@ -103,14 +105,16 @@ impl Bitboard {
 
             for piece in pieces.iter() {
                 let (piece_n, is_king) = match piece.chars().next() {
-                    Some('K') => (piece.chars().skip(1).collect::<String>().parse::<u8>()
-                        .or_else(|_| Err("Invalid piece number!"))? - 1, true),
-                    Some(_) => (piece.parse::<u8>().or_else(|_| Err("Invalid piece number!"))? - 1, false),
+                    ///////// tooooooo long <--------------------------- 
+                    Some('K') => (piece.chars().skip(1).collect::<String>().parse::<u8>().or_else(|_|
+                        Err(ParseBoardError::PositionError { position: piece.to_string() }))? - 1, true),
+                    Some(_) => (piece.parse::<u8>().or_else(|_|
+                        Err(ParseBoardError::PositionError { position: piece.to_string() }))? - 1, false),
                     None => break,  // if no pieces exist. not super pretty or clear like this...
                 };
 
                 if piece_n > 31 {  // already had been converted to computer numbers
-                    return Err("Invalid piece number");
+                    return Err(ParseBoardError::PositionError { position: piece.to_string() });
                 }
 
                 temp |= 1 << piece_n;
@@ -121,10 +125,11 @@ impl Bitboard {
             }
 
             // match the color to assign it to
-            match position.chars().next().ok_or("Not a valid position color")? {
+            match position.chars().next()
+                .ok_or(ParseBoardError::PositionError { position: "?".to_string() })? {
                 'B' => blacks |= temp,
                 'W' => whites |= temp,
-                _ => return Err("Not a valid position color")
+                ltr => return Err(ParseBoardError::ColorError { letter: ltr.to_string() }),
             };
         }
 
@@ -138,6 +143,7 @@ impl Bitboard {
     ///
     /// ```
     /// use muskox::Bitboard;
+    /// use muskox::bitboard::GameState;
     ///
     /// let board = Bitboard::new();
     /// assert_eq!(board.get_game_state(), GameState::InProgress);
@@ -164,8 +170,8 @@ impl Bitboard {
     /// Determines whether a certain action is valid or not.
     ///
     /// This information is encoded in a rust `Result`. If the action is valid, `Ok(())`
-    /// is returned; if not, then the `Err` option is returned wrapping a string with an
-    /// error message as to why the result is not valid.
+    /// is returned; if not, then the `Err` option is returned wrapping
+    /// [ActionError](crate.error.enum.ActionError.html) with the reason for error.
     ///
     /// # Arguments
     ///
@@ -176,6 +182,7 @@ impl Bitboard {
     ///
     /// ```
     /// use muskox::{Bitboard, Action};
+    /// use muskox::error::ActionError;
     ///
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
     ///
@@ -183,9 +190,9 @@ impl Bitboard {
     /// assert_eq!(board.validate_action(&action), Ok(()));
     ///
     /// let action = Action::new_from_movetext("12-8").unwrap();
-    /// assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+    /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
-    pub fn validate_action(&self, action: &Action) -> Result<(), &'static str> {
+    pub fn validate_action(&self, action: &Action) -> Result<(), ActionError> {
         self.take_action(&action)?;
         Ok(())
     }
@@ -194,7 +201,7 @@ impl Bitboard {
     ///
     /// This information is also encoded in a rust `Result`. If the action is valid, `Ok`
     /// wrapping the resultant bitboard is returned; if not, then the `Err` option is returned
-    /// wrapping a string with an error message as to why the result is not valid.
+    /// wrapping [ActionError](crate.error.enum.ActionError.html) with the reason for error.
     ///
     /// # Arguments
     ///
@@ -205,17 +212,17 @@ impl Bitboard {
     ///
     /// ```
     /// use muskox::{Bitboard, Action};
+    /// use muskox::error::ActionError;
     ///
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
     ///
     /// let action = Action::new_from_movetext("22-17").unwrap();
-    /// let board_p = Bit::new_from_fen("W:WK10,K15,18,24,27,28:B12,16,K17,20,K25,K29").unwrap();
-    /// assert_eq!(board.take_action(&action), Ok(board_p);
+    /// assert_eq!(board.take_action(&action).unwrap().fen(), "W:WK10,K15,18,24,27,28:B12,16,K17,20,K25,K29");
     ///
     /// let action = Action::new_from_movetext("12-8").unwrap();
-    /// assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+    /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
-    pub fn take_action(&self, action: &Action) -> Result<Bitboard, &'static str> {
+    pub fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
         // this is an epic monolith of a function. need to break it into smaller methods/
         // and apply clever techniques such as bitshifting and more rust like stuff.
 
@@ -275,19 +282,20 @@ impl Bitboard {
 
         // ensure that the source has turn color
         if !coloring_eq(source, &self.turn) {
-            return Err("Source must be occupied by the actor!");
+            let color = self.turn;
+            return Err(ActionError::SourceColorError { source, color });
         }
 
         // ensure that destination is empty.
-        if !is_empty(action.destination()) {
-            return Err("Destination must be empty!");
+        if !is_empty(destination) {
+            return Err(ActionError::DestinationEmptyError { destination });
         }
 
         match action.action_type() {
             ActionType::Move => {
                 // ensure that no jumpers are available
                 if self.get_jumpers(&self.turn) != 0 {
-                    return Err("Have to jump a piece!");
+                    return Err(ActionError::HaveToJumpError);
                 }
 
                 // ensure that it only moves backwards if source is a king
@@ -296,12 +304,12 @@ impl Bitboard {
 
                 if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
                         self.turn == Black && !is_king(source) {
-                    return Err("Only kings can move backwards!")
+                    return Err(ActionError::SinglePieceBackwardsError);
                 }
 
                 if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
                         self.turn == White && !is_king(source) {
-                    return Err("Only kings can move backwards!")
+                    return Err(ActionError::SinglePieceBackwardsError);
                 }
             },
 
@@ -314,12 +322,12 @@ impl Bitboard {
                     // ensure that only jump backwards if it is a king
                     if (jump_direction == Direction::UpLeft || jump_direction == Direction::UpRight) &&
                             self.turn == Black && !starts_as_king {
-                        return Err("Only kings can move backwards!")
+                        return Err(ActionError::SinglePieceBackwardsError);
                     }
 
                     if (jump_direction == Direction::DownLeft || jump_direction == Direction::DownRight) &&
                             self.turn == White && !starts_as_king {
-                        return Err("Only kings can move backwards!")
+                        return Err(ActionError::SinglePieceBackwardsError);
                     }
 
                     // see if we can try to use bitmasking to get this next time
@@ -343,7 +351,10 @@ impl Bitboard {
 
                     // ensure that it actually jumps over another piece that is not its own color
                     if !coloring_eq(skipped_over, &opponent_color) {
-                        return Err("You can only skip over a square with an opponent on it!");
+                        return Err(ActionError::SkippedPositionError {
+                            skipped: skipped_over,
+                            color: opponent_color,
+                        });
                     }
 
                     remove_piece(skipped_over, &mut board_p);
@@ -357,7 +368,7 @@ impl Bitboard {
                 }
                 // ensure that it there isnt another jump for it to do at destination
                 if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(!starts_as_king & ends_as_king) {
-                    return Err("Need to keep jumping!");
+                    return Err(ActionError::NeedMoreJumpingError);
                 }
             }
         }
@@ -690,7 +701,7 @@ mod tests {
         let action = Action::new_from_movetext("10-14").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
         let action = Action::new_from_movetext("23-18").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Source must be occupied by the actor!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SourceColorError { source: 22, color: Black }));
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
         let action = Action::new_from_movetext("16-19").unwrap();
@@ -698,13 +709,13 @@ mod tests {
         let action = Action::new_from_movetext("22-17").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
         let action = Action::new_from_movetext("12-8").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
         let action = Action::new_from_movetext("22-18").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Destination must be empty!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::DestinationEmptyError { destination: 17 }));
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
         let action = Action::new_from_movetext("9-6").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Have to jump a piece!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::HaveToJumpError));
     }
 
     #[test]
@@ -748,17 +759,17 @@ mod tests {
         let action = Action::new_from_movetext("30-21").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
         let action = Action::new_from_movetext("30-23").unwrap();
-        assert_eq!(board.validate_action(&action), Err("You can only skip over a square with an opponent on it!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SkippedPositionError { skipped: 25, color: Black }));
         let action = Action::new_from_movetext("27-20").unwrap();
-        assert_eq!(board.validate_action(&action), Err("You can only skip over a square with an opponent on it!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SkippedPositionError { skipped: 23, color: Black }));
 
         let board = Bitboard::new_from_fen(TEST_BOARD_7).unwrap();
         let action = Action::new_from_movetext("8-15-22").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Need to keep jumping!"));  // this is wrong
+        assert_eq!(board.validate_action(&action), Err(ActionError::NeedMoreJumpingError));  // this is wrong
         let action = Action::new_from_movetext("8-15-22-31").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
         let action = Action::new_from_movetext("8-15-22-31-24").unwrap();
-        assert_eq!(board.validate_action(&action), Err("Only kings can move backwards!"));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     }
 
     #[test]

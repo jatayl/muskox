@@ -1,6 +1,8 @@
 use std::cmp;
 use std::mem;
 
+use crate::error::ParseActionError;
+
 // need lookup table for square index for next direction
 
 /// Represents one of the four directions one can move in the game of checkers
@@ -37,17 +39,17 @@ impl Action {
     ///
     /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
-    pub fn new_from_vector(positions: Vec<u8>) -> Result<Action, &'static str> {
+    pub fn new_from_vector(positions: Vec<u8>) -> Result<Action, ParseActionError> {
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
         // check that all of the position numbers are in the right range
-        if positions.iter().any(|&x| x > 31) {
-            return Err("Invalid position number!");
+        if let Some(pos) = positions.iter().find(|&&x| x > 31) {
+            return Err(ParseActionError::PositionValueError { position: pos.to_string() });
         }
 
         // check to see if it is a valid length of position vector with max number of moves is 8
         if positions.len() < 2 || positions.len() > 9 {
-            return Err("Invalid number of moves!");
+            return Err(ParseActionError::MoveQuantityError { quantity: positions.len() });
         }
 
         let source = positions[0];
@@ -69,7 +71,7 @@ impl Action {
                     -7 => Direction::UpRight,
                     7 => Direction::DownLeft,
                     9 => Direction::DownRight,
-                    _ => return Err("Invalid move!"),
+                    _ => return Err(ParseActionError::PositionValueError { position: positions[i].to_string() }),
                 };
 
                 let shift = i * 2 + 15;
@@ -95,10 +97,11 @@ impl Action {
     /// let action = Action::new_from_movetext("19-24").unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     /// ```
-    pub fn new_from_movetext(movetext: &str) -> Result<Action, &'static str> {
+    pub fn new_from_movetext(movetext: &str) -> Result<Action, ParseActionError> {
         let positions: Vec<_> = movetext.split("-")
-            .map(|x| x.parse::<u8>().expect("Not valid board square"))
-            .collect();
+            .map(|x| x.parse::<u8>()
+                .or(Err(ParseActionError::PositionValueError { position: x.to_string() })))
+            .collect::<Result<_, ParseActionError>>()?;
 
         Action::new_from_vector(positions)
     }
