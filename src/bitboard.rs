@@ -1,4 +1,5 @@
 use std::mem;
+use std::collections::VecDeque;
 
 use crate::Action;
 use crate::ActionType;
@@ -331,23 +332,7 @@ impl Bitboard {
                     }
 
                     // see if we can try to use bitmasking to get this next time
-                    let skipped_over = {
-                        if source / 4 % 2 == 0 {  // even rows
-                            match jump_direction {
-                                Direction::UpLeft => curr - 4,
-                                Direction::UpRight => curr - 3,
-                                Direction::DownLeft => curr + 4,
-                                Direction::DownRight => curr + 5,
-                            }
-                        } else {  // odd rows
-                            match jump_direction {
-                                Direction::UpLeft => curr - 5,
-                                Direction::UpRight => curr - 4,
-                                Direction::DownLeft => curr + 3,
-                                Direction::DownRight => curr + 4,
-                            }
-                        }
-                    };  // need to get that skipped over piece...
+                    let skipped_over = jump_direction.relative_to(curr).unwrap();
 
                     // ensure that it actually jumps over another piece that is not its own color
                     if !coloring_eq(skipped_over, &opponent_color) {
@@ -359,12 +344,7 @@ impl Bitboard {
 
                     remove_piece(skipped_over, &mut board_p);
 
-                    curr = match jump_direction {
-                        Direction::UpLeft => curr - 9,
-                        Direction::UpRight => curr - 7,
-                        Direction::DownLeft => curr + 7,
-                        Direction::DownRight => curr + 9,
-                    };
+                    curr = jump_direction.relative_jump_from(curr).unwrap();
                 }
                 // ensure that it there isnt another jump for it to do at destination
                 if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(!starts_as_king & ends_as_king) {
@@ -376,6 +356,154 @@ impl Bitboard {
         board_p.turn = opponent_color;
 
         Ok(board_p)
+    }
+
+    // might be best to package (Action, Bitboard) tuple in another format
+    // will probably have to reoptimize this method at some point
+    pub fn generate_all_actions(&self) -> Vec<(Action, Bitboard)> {
+        // put our awful lambdas here...
+        let pop_lowest_piece = |mask: &mut Mask| {
+            let position = mask.trailing_zeros();
+            *mask ^= 1 << position;
+            position
+        };
+
+        let pop_highest_piece = |mask: &mut Mask| {
+            let position = (0x10000000 as u32 >> mask.leading_zeros()).trailing_zeros();
+            *mask ^= 1 << position;
+            position
+        };
+
+        let is_king = |loc: &u8| (self.kings >> loc) % 2 == 1;
+        let is_empty = |loc: &u8| (self.whites >> loc) % 2 == 0 && (self.blacks >> loc) % 2 == 0;
+
+        // thing a lot about where these two functions should go
+        // could probably consolidate these two functions at some point
+        let get_move_candidates = |color: &Color, position: u8| {
+            // defintely going to want a small vec optimizaton here
+            let mut directions = match *color {
+                White => vec![Direction::UpLeft, Direction::UpRight],
+                Black => vec![Direction::DownLeft, Direction::DownRight],
+            };
+
+            if is_king(&position) {
+                directions.extend(match *color {
+                    White => vec![Direction::DownLeft, Direction::DownRight],
+                    Black => vec![Direction::UpLeft, Direction::UpRight],
+                });
+            }
+
+            // get valid locations and filter on an emptiness predicate
+            directions.iter()
+                .filter_map(|d| d.relative_to(position))
+                .filter(is_empty)
+                .collect::<Vec<_>>()
+        };
+
+        let get_jump_candidates = |color: &Color, position: u8| {
+            // defintely going to want a small vec optimizaton here
+            let mut directions = match *color {
+                White => vec![Direction::UpLeft, Direction::UpRight],
+                Black => vec![Direction::DownLeft, Direction::DownRight],
+            };
+
+            if is_king(&position) {
+                directions.extend(match *color {
+                    White => vec![Direction::DownLeft, Direction::DownRight],
+                    Black => vec![Direction::UpLeft, Direction::UpRight],
+                });
+            }
+
+
+            directions.iter()
+                .filter_map(|d| d.relative_jump_from(position))
+                .filter(is_empty)
+                .collect::<Vec<_>>()
+        };
+
+        if let GameState::Completed(_) = self.get_game_state() {
+            return Vec::<(Action, Bitboard)>::new();
+        }
+
+        let jumpers = self.get_jumpers(&self.turn);
+
+        let action_type = match jumpers {
+            0 => ActionType::Move,
+            _ => ActionType::Jump,
+        };
+
+        let mut actions = Vec::<(Action, Bitboard)>::new();
+
+        // could check tree based search performance
+        match action_type {
+            ActionType::Move => {
+                // append all of the possible moves
+                let mut movers = self.get_movers(&self.turn);
+
+                while movers != 0 {
+                    let position = match self.turn {
+                        White => pop_lowest_piece,
+                        Black => pop_highest_piece,
+                    }(&mut movers);
+
+                    let base_action = vec![position as u8];
+
+                    let move_candidates = get_move_candidates(&self.turn, position as u8);
+
+                    for candidate in move_candidates {
+                        let mut action = base_action.clone();
+                        action.push(candidate);
+                        let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
+                        let action = Action::new_from_vector(action).unwrap();
+                        let board_p = self.take_action(&action).unwrap(); // this may be slow. just do directly here?
+                        actions.push((action, board_p));
+                    }
+                }
+            },
+            ActionType::Jump => {
+                // keep a running queue until it is empty
+                let mut boards_in_progress = VecDeque::<(Bitboard, Vec<u8>)>::new();
+
+                // set up the initial pieces to check.
+                let mut jumpers = self.get_jumpers(&self.turn);
+
+                while jumpers != 0 {
+                    let position = match self.turn {
+                        White => pop_lowest_piece,
+                        Black => pop_highest_piece,
+                    }(&mut jumpers);
+
+                    let base_action = vec![position as u8];
+
+                    boards_in_progress.push_back((self.clone(), base_action));
+                }
+
+                while let Some((board, base_action)) = boards_in_progress.pop_front() {
+                    // can only pop the piece that has been jumping [last element in action]
+                    let jumper = base_action.last().unwrap();
+
+                    // generate all possible new boards based on jumpers.
+                    let jump_candidates = get_jump_candidates(&self.turn, *jumper);
+
+                    for candidate in jump_candidates {
+                        let mut action_vec = base_action.clone();
+                        action_vec.push(candidate);
+                        let action = Action::new_from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect()).unwrap();
+                        let board_p = self.take_action(&action).unwrap();
+
+                        // check if we cannot jump anymore
+                        if board_p.get_jumpers(&self.turn) & (1 << jumper) == 0 {
+                            actions.push((action, board));
+                            continue;
+                        }
+                        // other wise put it in the deque
+                        boards_in_progress.push_back((board_p, action_vec));
+                    }
+                }
+            },
+        }
+
+        actions
     }
 
     /// Returns a u32 mask that represents all of the white pieces that can move.

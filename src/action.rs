@@ -14,6 +14,54 @@ pub enum Direction {
     DownRight,
 }
 
+impl Direction {
+    pub(crate) fn relative_to(&self, position: u8) -> Option<u8> {
+        if position > 31 {
+            return None;
+        }
+        let out;
+        // maybe make this a cache would be better in terms of simplicity and performance?
+        // could defintely make it more compact
+        if position / 4 % 2 == 0 {  // even rows
+            out = match *self {
+                Direction::UpLeft => position - 4,
+                Direction::UpRight => position - 3,
+                Direction::DownLeft => position + 4,
+                Direction::DownRight => position + 5,
+            }
+        } else {  // odd rows
+            out = match *self {
+                Direction::UpLeft => position - 5,
+                Direction::UpRight => position - 4,
+                Direction::DownLeft => position + 3,
+                Direction::DownRight => position + 4,
+            }
+        }
+        if out > 31 {
+            return None;
+        }
+        Some(out)
+    }
+
+    pub(crate) fn relative_jump_from(&self, position: u8) -> Option<u8> {
+        // maybe rename this method
+        if position > 31 {
+            return None;
+        }
+        let out = match *self {
+            Direction::UpLeft => position - 9,
+            Direction::UpRight => position - 7,
+            Direction::DownLeft => position + 7,
+            Direction::DownRight => position + 9,
+        };
+        if out > 31 {
+            return None;
+        }
+        Some(out)
+
+    }
+}
+
 /// Represents one of the two types of moves that exist in checkers
 #[derive(Debug, PartialEq)]
 pub enum ActionType {
@@ -40,6 +88,7 @@ impl Action {
     /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     pub fn new_from_vector(positions: Vec<u8>) -> Result<Action, ParseActionError> {
+        // maybe make this method work for all iterators and not just vectors
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
         // check that all of the position numbers are in the right range
@@ -188,6 +237,8 @@ impl Action {
             };
         }
     }
+
+    // generate movetext
 }
 
 #[cfg(test)]
