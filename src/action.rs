@@ -15,7 +15,9 @@ pub enum Direction {
 }
 
 impl Direction {
+    // these two functions are not completely safe.
     pub(crate) fn relative_to(&self, position: u8) -> Option<u8> {
+        // need to check boundaries
         if position > 31 {
             return None;
         }
@@ -218,7 +220,7 @@ impl Action {
         let source = self.source();
         let destination = self.destination();
         let diff = (destination as i8) - (source as i8);
-        // see if we can use shifting and bitmasks to make it most efficient!
+        // should aim to try to change this or move it elsewhere
         if source / 4 % 2 == 0 {  // even rows
             return match diff {
                 -4 => Some(Direction::UpLeft),
@@ -238,7 +240,27 @@ impl Action {
         }
     }
 
-    // generate movetext
+    /// Generate movetext for a particular action
+    pub fn movetext(&self) -> String {
+        let source = self.source();
+
+        match self.action_type() {
+            ActionType::Move => format!("{}-{}", source + 1, self.destination() + 1),
+            ActionType::Jump => {
+                let mut out = format!("{}-", source + 1);
+                let mut curr = source;
+
+                for i in 0..self.jump_len() {
+                    curr = self.jump_direction(i).unwrap().relative_jump_from(curr).unwrap();
+                    out.push_str(&format!("{}-", curr + 1));
+                }
+
+                out.pop();  // excess '-'
+
+                out
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -249,6 +271,24 @@ mod tests {
     static TEST_MOVE_2: &'static str = "1-6";
     static TEST_MOVE_3: &'static str = "10-19-12-3";
     static TEST_MOVE_4: &'static str = "15-11";
+
+    #[test]
+    fn relative_position_test() {
+        let pos = Direction::DownRight.relative_to(1);
+        assert_eq!(pos, Some(6));
+
+        let pos = Direction::UpLeft.relative_to(24);
+        assert_eq!(pos, Some(20));
+
+        let pos = Direction::DownLeft.relative_jump_from(10);
+        assert_eq!(pos, Some(17));
+
+        let pos = Direction::UpRight.relative_jump_from(43);
+        assert_eq!(pos, None);
+
+        // let pos = Direction::UpRight.relative_jump_from(7);
+        // assert_eq!(pos, None);  // does not work yet
+    }
 
     #[test]
     fn action_overview_test() {
