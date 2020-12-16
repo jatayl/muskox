@@ -224,46 +224,12 @@ impl Bitboard {
     /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
     pub fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
-        // this is an epic monolith of a function. need to break it into smaller methods/
-        // and apply clever techniques such as bitshifting and more rust like stuff.
-
-        // make some of these lambdas private methods
-        let coloring_eq = |loc: u8, color: &Color| {
-            let color_mask = match color {
-                White => self.whites,
-                Black => self.blacks,
-            };
-            (color_mask >> loc) % 2 == 1
-        };
-
-        let is_empty = |loc: u8| (self.whites >> loc) % 2 == 0 && (self.blacks >> loc) % 2 == 0;
-
-        let remove_piece = |loc: u8, board: &mut Bitboard| {
-            let mask = !(1 << loc);
-            board.whites &= mask;
-            board.blacks &= mask;
-            board.kings &= mask;
-        };
-
-        let add_piece = |loc: u8, color: &Color, is_king: bool, board: &mut Bitboard| {
-            let mask = 1 << loc;
-            match color {
-                Black => board.blacks |= mask,
-                White => board.whites |= mask,
-            };
-            if is_king {
-                board.kings |= mask;
-            }
-        };
-        let is_king = |loc: u8| (self.kings >> loc) % 2 == 1;
-
-
         let mut board_p = self.clone();
 
         let source = action.source();
         let destination = action.destination();
 
-        let starts_as_king = is_king(source);
+        let starts_as_king = self.is_king(source);
 
         let ends_as_king = {
             let dest_row = destination / 4;
@@ -276,19 +242,19 @@ impl Bitboard {
         let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
 
         // erase color from source
-        remove_piece(source, &mut board_p);
+        board_p.remove_piece(source);
 
         // add color to destination
-        add_piece(destination, &self.turn, ends_as_king, &mut board_p);
+        board_p.add_piece(destination, &self.turn, ends_as_king);
 
         // ensure that the source has turn color
-        if !coloring_eq(source, &self.turn) {
+        if !self.coloring_eq(source, &self.turn) {
             let color = self.turn;
             return Err(ActionError::SourceColorError { source, color });
         }
 
         // ensure that destination is empty.
-        if !is_empty(destination) {
+        if !self.is_empty(destination) {
             return Err(ActionError::DestinationEmptyError { destination });
         }
 
@@ -304,12 +270,12 @@ impl Bitboard {
                 let move_direction = action.move_direction().unwrap();
 
                 if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
-                        self.turn == Black && !is_king(source) {
+                        self.turn == Black && !self.is_king(source) {
                     return Err(ActionError::SinglePieceBackwardsError);
                 }
 
                 if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
-                        self.turn == White && !is_king(source) {
+                        self.turn == White && !self.is_king(source) {
                     return Err(ActionError::SinglePieceBackwardsError);
                 }
             },
@@ -335,14 +301,14 @@ impl Bitboard {
                     let skipped_over = jump_direction.relative_to(curr).unwrap();
 
                     // ensure that it actually jumps over another piece that is not its own color
-                    if !coloring_eq(skipped_over, &opponent_color) {
+                    if !self.coloring_eq(skipped_over, &opponent_color) {
                         return Err(ActionError::SkippedPositionError {
                             skipped: skipped_over,
                             color: opponent_color,
                         });
                     }
 
-                    remove_piece(skipped_over, &mut board_p);
+                    board_p.remove_piece(skipped_over);
 
                     curr = jump_direction.relative_jump_from(curr).unwrap();
                 }
@@ -361,64 +327,14 @@ impl Bitboard {
     // might be best to package (Action, Bitboard) tuple in another format
     // will probably have to reoptimize this method at some point
     pub fn generate_all_actions(&self) -> Vec<(Action, Bitboard)> {
-        // put our awful lambdas here...
-        let pop_lowest_piece = |mask: &mut Mask| {
-            let position = mask.trailing_zeros();
+        // returns the next piece to check moves for
+        let pop_piece = |mask: &mut Mask, color: &Color| {
+            let position = match *color {
+                White => mask.trailing_zeros(),
+                Black => (0x10000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+            };
             *mask ^= 1 << position;
             position
-        };
-
-        let pop_highest_piece = |mask: &mut Mask| {
-            let position = (0x10000000 as u32 >> mask.leading_zeros()).trailing_zeros();
-            *mask ^= 1 << position;
-            position
-        };
-
-        let is_king = |loc: &u8| (self.kings >> loc) % 2 == 1;
-        let is_empty = |loc: &u8| (self.whites >> loc) % 2 == 0 && (self.blacks >> loc) % 2 == 0;
-
-        // thing a lot about where these two functions should go
-        // could probably consolidate these two functions at some point
-        let get_move_candidates = |color: &Color, position: u8| {
-            // defintely going to want a small vec optimizaton here
-            let mut directions = match *color {
-                White => vec![Direction::UpLeft, Direction::UpRight],
-                Black => vec![Direction::DownLeft, Direction::DownRight],
-            };
-
-            if is_king(&position) {
-                directions.extend(match *color {
-                    White => vec![Direction::DownLeft, Direction::DownRight],
-                    Black => vec![Direction::UpLeft, Direction::UpRight],
-                });
-            }
-
-            // get valid locations and filter on an emptiness predicate
-            directions.iter()
-                .filter_map(|d| d.relative_to(position))
-                .filter(is_empty)
-                .collect::<Vec<_>>()
-        };
-
-        let get_jump_candidates = |color: &Color, position: u8| {
-            // defintely going to want a small vec optimizaton here
-            let mut directions = match *color {
-                White => vec![Direction::UpLeft, Direction::UpRight],
-                Black => vec![Direction::DownLeft, Direction::DownRight],
-            };
-
-            if is_king(&position) {
-                directions.extend(match *color {
-                    White => vec![Direction::DownLeft, Direction::DownRight],
-                    Black => vec![Direction::UpLeft, Direction::UpRight],
-                });
-            }
-
-
-            directions.iter()
-                .filter_map(|d| d.relative_jump_from(position))
-                .filter(is_empty)
-                .collect::<Vec<_>>()
         };
 
         if let GameState::Completed(_) = self.get_game_state() {
@@ -441,14 +357,11 @@ impl Bitboard {
                 let mut movers = self.get_movers(&self.turn);
 
                 while movers != 0 {
-                    let position = match self.turn {
-                        White => pop_lowest_piece,
-                        Black => pop_highest_piece,
-                    }(&mut movers);
+                    let position = pop_piece(&mut movers, &self.turn);
 
                     let base_action = vec![position as u8];
 
-                    let move_candidates = get_move_candidates(&self.turn, position as u8);
+                    let move_candidates = self.next_position_possibilities(position as u8, &action_type);
 
                     for candidate in move_candidates {
                         let mut action = base_action.clone();
@@ -468,10 +381,7 @@ impl Bitboard {
                 let mut jumpers = self.get_jumpers(&self.turn);
 
                 while jumpers != 0 {
-                    let position = match self.turn {
-                        White => pop_lowest_piece,
-                        Black => pop_highest_piece,
-                    }(&mut jumpers);
+                    let position = pop_piece(&mut jumpers, &self.turn);
 
                     let base_action = vec![position as u8];
 
@@ -483,7 +393,7 @@ impl Bitboard {
                     let jumper = base_action.last().unwrap();
 
                     // generate all possible new boards based on jumpers.
-                    let jump_candidates = get_jump_candidates(&self.turn, *jumper);
+                    let jump_candidates = self.next_position_possibilities(*jumper, &action_type);
 
                     for candidate in jump_candidates {
                         let mut action_vec = base_action.clone();
@@ -504,102 +414,6 @@ impl Bitboard {
         }
 
         actions
-    }
-
-    /// Returns a u32 mask that represents all of the white pieces that can move.
-    /// Recognize that this does not include the white pieces that can jump. To
-    /// access those use `get_jumpers`.
-    fn get_movers(&self, color: &Color) -> Mask {
-        let not_occupied = !(self.whites | self.blacks);
-
-        match color {
-            White => {
-                let white_kings = self.whites & self.kings;
-
-                let mut movers = (not_occupied << 4) & self.whites;
-
-                movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
-                movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
-
-                if white_kings != 0 {
-                    movers |= (not_occupied >> 4) & white_kings;
-                    movers |= ((not_occupied & MASK_L3) >> 3) & white_kings;
-                    movers |= ((not_occupied & MASK_L5) >> 5) & white_kings;
-                }
-
-                movers
-            },
-            Black => {
-                let black_kings = self.blacks & self.kings;
-
-                let mut movers = (not_occupied >> 4) & self.blacks;
-
-                movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
-                movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
-
-                if black_kings != 0 {
-                    movers |= (not_occupied << 4) & black_kings;
-                    movers |= ((not_occupied & MASK_R3) << 3) & black_kings;
-                    movers |= ((not_occupied & MASK_R5) << 5) & black_kings;
-                }
-
-                movers
-            }
-        }
-    }
-
-    /// Returns a u32 mask that represents all of the white pieces that can jump.
-    /// Recognize that this does not include the white pieces that can move. To
-    /// access those use `get_movers`.
-    fn get_jumpers(&self, color: &Color) -> Mask {
-        let not_occupied = !(self.whites | self.blacks);
-
-        match color {
-            White => {
-                let white_kings = self.whites & self.kings;
-
-                let mut movers = 0;
-                let mut temp = (not_occupied << 4) & self.blacks;
-
-                movers |= ((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5);
-
-                temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.blacks;
-                movers |= temp << 4;
-
-                movers &= self.whites;
-
-                if white_kings != 0 {
-                    temp = (not_occupied >> 4) & self.blacks;
-                    movers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5)) & white_kings;
-                    temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
-                    movers |= (temp >> 4) & white_kings;
-                }
-
-                movers
-            },
-            Black => {
-                let black_kings = self.blacks & self.kings;
-
-                let mut movers = 0;
-                let mut temp = (not_occupied >> 4) & self.whites;
-
-                movers |= ((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5);
-
-                temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.whites;
-                movers |= temp >> 4;
-
-                movers &= self.blacks;
-
-                if black_kings != 0 {
-                    temp = (not_occupied << 4) & self.whites;
-                    movers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & black_kings;
-                    temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.whites;
-                    movers |= (temp << 4) & black_kings;
-                }
-
-                movers
-            }
-        }
     }
 
     /// Creates string FEN tag according to Portable Draughts Notation (PDN). Read more
@@ -703,6 +517,168 @@ impl Bitboard {
         out
     }
 
+    /// Returns a u32 mask that represents all of the white pieces that can move.
+    /// Recognize that this does not include the white pieces that can jump. To
+    /// access those use `get_jumpers`.
+    fn get_movers(&self, color: &Color) -> Mask {
+        let not_occupied = !(self.whites | self.blacks);
+
+        match color {
+            White => {
+                let white_kings = self.whites & self.kings;
+
+                let mut movers = (not_occupied << 4) & self.whites;
+
+                movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
+                movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
+
+                if white_kings != 0 {
+                    movers |= (not_occupied >> 4) & white_kings;
+                    movers |= ((not_occupied & MASK_L3) >> 3) & white_kings;
+                    movers |= ((not_occupied & MASK_L5) >> 5) & white_kings;
+                }
+
+                movers
+            },
+            Black => {
+                let black_kings = self.blacks & self.kings;
+
+                let mut movers = (not_occupied >> 4) & self.blacks;
+
+                movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
+                movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
+
+                if black_kings != 0 {
+                    movers |= (not_occupied << 4) & black_kings;
+                    movers |= ((not_occupied & MASK_R3) << 3) & black_kings;
+                    movers |= ((not_occupied & MASK_R5) << 5) & black_kings;
+                }
+
+                movers
+            }
+        }
+    }
+
+    /// Returns a u32 mask that represents all of the white pieces that can jump.
+    /// Recognize that this does not include the white pieces that can move. To
+    /// access those use `get_movers`.
+    fn get_jumpers(&self, color: &Color) -> Mask {
+        let not_occupied = !(self.whites | self.blacks);
+
+        match color {
+            White => {
+                let white_kings = self.whites & self.kings;
+
+                let mut jumpers = 0;
+                let mut temp = (not_occupied << 4) & self.blacks;
+
+                jumpers |= ((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5);
+
+                temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.blacks;
+                jumpers |= temp << 4;
+
+                jumpers &= self.whites;
+
+                if white_kings != 0 {
+                    temp = (not_occupied >> 4) & self.blacks;
+                    jumpers |= (((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5)) & white_kings;
+                    temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.blacks;
+                    jumpers |= (temp >> 4) & white_kings;
+                }
+
+                jumpers
+            },
+            Black => {
+                let black_kings = self.blacks & self.kings;
+
+                let mut jumpers = 0;
+                let mut temp = (not_occupied >> 4) & self.whites;
+
+                jumpers |= ((temp & MASK_L3) >> 3) | ((temp & MASK_L5) >> 5);
+
+                temp = (((not_occupied & MASK_L3) >> 3) | ((not_occupied & MASK_L5) >> 5)) & self.whites;
+                jumpers |= temp >> 4;
+
+                jumpers &= self.blacks;
+
+                if black_kings != 0 {
+                    temp = (not_occupied << 4) & self.whites;
+                    jumpers |= (((temp & MASK_R3) << 3) | ((temp & MASK_R5) << 5)) & black_kings;
+                    temp = (((not_occupied & MASK_R3) << 3) | ((not_occupied & MASK_R5) << 5)) & self.whites;
+                    jumpers |= (temp << 4) & black_kings;
+                }
+
+                jumpers
+            }
+        }
+    }
+
+    /// Retrives all of the possible next positions from a certain position given a particular action type
+    fn next_position_possibilities(&self, position: u8, action_type: &ActionType) -> Vec<u8> {
+        let mut directions = match self.turn {
+            White => vec![Direction::UpLeft, Direction::UpRight],
+            Black => vec![Direction::DownLeft, Direction::DownRight],
+        };
+
+        if self.is_king(position) {
+            directions.extend(match self.turn {
+                White => vec![Direction::DownLeft, Direction::DownRight],
+                Black => vec![Direction::UpLeft, Direction::UpRight],
+            });
+        }
+
+        directions.iter()
+            .filter_map(|d| match action_type {
+                ActionType::Move => d.relative_to(position),
+                ActionType::Jump => d.relative_jump_from(position),
+            })
+            .filter(|&p| self.is_empty(p))
+            .collect::<Vec<_>>()
+    }
+
+    /// Returns whether a given position is empty or not
+    #[inline]
+    fn is_empty(&self, position: u8) -> bool {
+        (self.whites >> position) % 2 == 0 && (self.blacks >> position) % 2 == 0
+    }
+
+    /// Returns whether a given position has a king or not
+    #[inline]
+    fn is_king(&self, position: u8) -> bool {
+        (self.kings >> position) % 2 == 1
+    }
+
+    /// Returns whether or not a position has a particular color or not
+    #[inline]
+    fn coloring_eq(self, position: u8, color: &Color) -> bool {
+        let color_mask = match color {
+            White => self.whites,
+            Black => self.blacks,
+        };
+        (color_mask >> position) % 2 == 1
+    }
+
+    /// Removes the piece from the given position on the board. Note that this mutates the board
+    #[inline]
+    fn remove_piece(&mut self, position: u8) {
+        let mask = !(1 << position);
+        self.whites &= mask;
+        self.blacks &= mask;
+        self.kings &= mask;
+    }
+
+    /// Adds a piece to a board. Note that this mutates the board
+    #[inline]
+    fn add_piece(&mut self, position: u8, color: &Color, is_king: bool) {
+        let mask = 1 << position;
+        match color {
+            Black => self.blacks |= mask,
+            White => self.whites |= mask,
+        };
+        if is_king {
+            self.kings |= mask;
+        }
+    }
 }
 
 #[cfg(test)]
