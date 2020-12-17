@@ -409,15 +409,23 @@ impl Bitboard {
 
                         let direction = Direction::between(jumper, candidate).unwrap();
 
+                        let starts_as_king = board.is_king(jumper);
+
+                        let ends_as_king = {
+                            let dest_row = candidate / 4;
+                            // will be a king if it was a king or will be in end row last
+                            starts_as_king || dest_row == 0 || dest_row == 7
+                        };
+
                         // apply jump on piece
                         let mut board_p = board.clone();
-                        board_p.add_piece(candidate, &board.turn, board.is_king(jumper));
+                        board_p.add_piece(candidate, &board.turn, ends_as_king);
                         board_p.remove_piece(jumper);
                         board_p.remove_piece(direction.relative_to(jumper).unwrap());
 
                         // check if we cannot jump anymore
-                        if board_p.get_jumpers(&board.turn) & (1 << candidate) == 0 {
-                            actions.push((action, board));
+                        if (board_p.get_jumpers(&board.turn) & (1 << candidate) == 0) | (!starts_as_king & ends_as_king) {
+                            actions.push((action, board_p));
                             continue;
                         }
                         // other wise put it in the deque
