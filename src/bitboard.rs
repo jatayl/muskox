@@ -9,10 +9,12 @@ use crate::error::ParseBoardError;
 
 type Mask = u32;
 
+// these values need rigorous testing to ensure they are right
+// many problems have arisen from these.
 static MASK_L3: Mask = 0x07070707;
-static MASK_L5: Mask = 0x00e0e0e0;
+static MASK_L5: Mask = 0xe0e0e0e0;
 static MASK_R3: Mask = 0xe0e0e0e0;
-static MASK_R5: Mask = 0x07070700;
+static MASK_R5: Mask = 0x07070707;
 
 // maybe want to consider making a piece enum so we can abstract the king
 
@@ -41,7 +43,7 @@ pub enum GameState {
 }
 
 /// Represents a single state of a checkerboard
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]  // dont need to keep debug
 pub struct Bitboard {
     blacks: Mask,
     whites: Mask,
@@ -106,7 +108,6 @@ impl Bitboard {
 
             for piece in pieces.iter() {
                 let (piece_n, is_king) = match piece.chars().next() {
-                    ///////// tooooooo long <--------------------------- 
                     Some('K') => (piece.chars().skip(1).collect::<String>().parse::<u8>().or_else(|_|
                         Err(ParseBoardError::PositionError { position: piece.to_string() }))? - 1, true),
                     Some(_) => (piece.parse::<u8>().or_else(|_|
@@ -154,7 +155,7 @@ impl Bitboard {
         if self.turn == Black && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
             return GameState::Completed(Winner::Player(White));
         }
-        if self.turn == White && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
+        if self.turn == White && self.get_movers(&White) == 0 && self.get_jumpers(&White) == 0 {
             return GameState::Completed(Winner::Player(Black));
         }
 
@@ -331,14 +332,14 @@ impl Bitboard {
         let pop_piece = |mask: &mut Mask, color: &Color| {
             let position = match *color {
                 White => mask.trailing_zeros(),
-                Black => (0x10000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+                Black => (0x80000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
             };
             *mask ^= 1 << position;
             position
         };
 
         if let GameState::Completed(_) = self.get_game_state() {
-            return Vec::<(Action, Bitboard)>::new();
+            return Vec::new();
         }
 
         let jumpers = self.get_jumpers(&self.turn);
@@ -348,7 +349,7 @@ impl Bitboard {
             _ => ActionType::Jump,
         };
 
-        let mut actions = Vec::<(Action, Bitboard)>::new();
+        let mut actions = Vec::new();
 
         // could check tree based search performance
         match action_type {
@@ -357,25 +358,31 @@ impl Bitboard {
                 let mut movers = self.get_movers(&self.turn);
 
                 while movers != 0 {
-                    let position = pop_piece(&mut movers, &self.turn);
+                    let mover = pop_piece(&mut movers, &self.turn);
 
-                    let base_action = vec![position as u8];
+                    let base_action = vec![mover as u8];
 
-                    let move_candidates = self.next_position_possibilities(position as u8, &action_type);
+                    let move_candidates = self.next_position_possibilities(mover as u8, &action_type);
 
                     for candidate in move_candidates {
                         let mut action = base_action.clone();
                         action.push(candidate);
                         let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
                         let action = Action::new_from_vector(action).unwrap();
-                        let board_p = self.take_action(&action).unwrap(); // this may be slow. just do directly here?
+
+                        let mut board_p = self.clone();
+                        
+                        // apply move on pieces
+                        board_p.add_piece(candidate, &self.turn, self.is_king(mover as u8));
+                        board_p.remove_piece(mover as u8);
+
                         actions.push((action, board_p));
                     }
                 }
             },
             ActionType::Jump => {
                 // keep a running queue until it is empty
-                let mut boards_in_progress = VecDeque::<(Bitboard, Vec<u8>)>::new();
+                let mut boards_in_progress = VecDeque::new();
 
                 // set up the initial pieces to check.
                 let mut jumpers = self.get_jumpers(&self.turn);
@@ -390,19 +397,26 @@ impl Bitboard {
 
                 while let Some((board, base_action)) = boards_in_progress.pop_front() {
                     // can only pop the piece that has been jumping [last element in action]
-                    let jumper = base_action.last().unwrap();
+                    let &jumper = base_action.last().unwrap();
 
                     // generate all possible new boards based on jumpers.
-                    let jump_candidates = self.next_position_possibilities(*jumper, &action_type);
+                    let jump_candidates = self.next_position_possibilities(jumper, &action_type);
 
                     for candidate in jump_candidates {
                         let mut action_vec = base_action.clone();
                         action_vec.push(candidate);
                         let action = Action::new_from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect()).unwrap();
-                        let board_p = self.take_action(&action).unwrap();
+
+                        let direction = Direction::between(jumper, candidate).unwrap();
+
+                        // apply jump on piece
+                        let mut board_p = board.clone();
+                        board_p.add_piece(candidate, &board.turn, board.is_king(jumper));
+                        board_p.remove_piece(jumper);
+                        board_p.remove_piece(direction.relative_to(jumper).unwrap());
 
                         // check if we cannot jump anymore
-                        if board_p.get_jumpers(&self.turn) & (1 << jumper) == 0 {
+                        if board_p.get_jumpers(&board.turn) & (1 << candidate) == 0 {
                             actions.push((action, board));
                             continue;
                         }
@@ -527,10 +541,11 @@ impl Bitboard {
             White => {
                 let white_kings = self.whites & self.kings;
 
-                let mut movers = (not_occupied << 4) & self.whites;
+                let mut movers = not_occupied << 4;
 
-                movers |= ((not_occupied & MASK_R3) << 3) & self.whites;
-                movers |= ((not_occupied & MASK_R5) << 5) & self.whites;
+                movers |= (not_occupied & MASK_R3) << 3;
+                movers |= (not_occupied & MASK_R5) << 5;
+                movers &= self.whites;
 
                 if white_kings != 0 {
                     movers |= (not_occupied >> 4) & white_kings;
@@ -543,10 +558,11 @@ impl Bitboard {
             Black => {
                 let black_kings = self.blacks & self.kings;
 
-                let mut movers = (not_occupied >> 4) & self.blacks;
+                let mut movers = not_occupied >> 4;
 
-                movers |= ((not_occupied & MASK_L3) >> 3) & self.blacks;
-                movers |= ((not_occupied & MASK_L5) >> 5) & self.blacks;
+                movers |= (not_occupied & MASK_L3) >> 3;
+                movers |= (not_occupied & MASK_L5) >> 5;
+                movers &= self.blacks;
 
                 if black_kings != 0 {
                     movers |= (not_occupied << 4) & black_kings;
@@ -559,10 +575,12 @@ impl Bitboard {
         }
     }
 
-    /// Returns a u32 mask that represents all of the white pieces that can jump.
-    /// Recognize that this does not include the white pieces that can move. To
+    /// Returns a u32 mask that represents all of the pieces of a certain color that can
+    /// jump. Recognize that this does not include the white pieces that can move. To
     /// access those use `get_movers`.
     fn get_jumpers(&self, color: &Color) -> Mask {
+        // not picking up moves forward left
+
         let not_occupied = !(self.whites | self.blacks);
 
         match color {
@@ -627,12 +645,27 @@ impl Bitboard {
             });
         }
 
+        let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+
         directions.iter()
-            .filter_map(|d| match action_type {
-                ActionType::Move => d.relative_to(position),
-                ActionType::Jump => d.relative_jump_from(position),
+            .filter_map(|d| {
+                match action_type {
+                    ActionType::Move => d.relative_to(position),
+                    ActionType::Jump => d.relative_jump_from(position),
+                }
             })
-            .filter(|&p| self.is_empty(p))
+            .filter(|&p| {
+                // check to ensure we are only jumping over opponents pieces
+                // this is an inefficient way of getting dir..
+                if *action_type == ActionType::Jump {
+                    let dir = Direction::between(position, p).unwrap();
+                    if !self.coloring_eq(dir.relative_to(position).unwrap(), &opponent_color) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .filter(|&p| self.is_empty(p))  // must be landing in empty spot
             .collect::<Vec<_>>()
     }
 
@@ -778,7 +811,7 @@ mod tests {
         assert_eq!(board.get_jumpers(&Black), 0);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        assert_eq!(board.get_jumpers(&Black), 0x80004000);
+        assert_eq!(board.get_jumpers(&Black), 0x80204000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_jumpers(&Black), 0x401000c0);  // this one is failing

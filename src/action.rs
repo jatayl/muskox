@@ -1,3 +1,4 @@
+use std::fmt;
 use std::cmp;
 use std::mem;
 
@@ -6,7 +7,7 @@ use crate::error::ParseActionError;
 // need lookup table for square index for next direction
 
 /// Represents one of the four directions one can move in the game of checkers
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq, Debug)]  // dont need to keep debug
 pub enum Direction {
     UpLeft,
     UpRight,
@@ -15,6 +16,43 @@ pub enum Direction {
 }
 
 impl Direction {
+    // these three methods need an assessment of implementation and naming
+
+    pub(crate) fn between(source: u8, destination: u8) -> Option<Direction> {
+        // this function is not safe yet... and its really messy
+
+        let diff = (destination as i8) - (source as i8);
+        // should aim to try to change this or move it elsewhere
+
+        // check jump
+        match diff {
+            -9 => return Some(Direction::UpLeft),
+            -7 => return Some(Direction::UpRight),
+            7 => return Some(Direction::DownLeft),
+            9 => return Some(Direction::DownRight),
+            _ => (),
+        }
+
+        // check move
+        if source / 4 % 2 == 0 {  // even rows
+            return match diff {
+                -4 => Some(Direction::UpLeft),
+                -3 => Some(Direction::UpRight),
+                4 => Some(Direction::DownLeft),
+                5 => Some(Direction::DownRight),
+                _ => None
+            };
+        } else {                  // odd rows
+            return match diff {
+                -5 => Some(Direction::UpLeft),
+                -4 => Some(Direction::UpRight),
+                3 => Some(Direction::DownLeft),
+                4 => Some(Direction::DownRight),
+                _ => None,
+            };
+        }
+    }
+
     // these two functions are not completely safe.
     pub(crate) fn relative_to(&self, position: u8) -> Option<u8> {
         // need to check boundaries
@@ -42,10 +80,18 @@ impl Direction {
         if out > 31 {
             return None;
         }
+        // ensure that we dont escape the bounds on the board.
+        // maybe change this strat later
+        let in_col = (position % 4) as i8;
+        let out_col = (out % 4) as i8;
+        if out_col - in_col != 0 && out_col - in_col != 1 && out_col - in_col != -1 {
+            return None
+        }
         Some(out)
     }
 
     pub(crate) fn relative_jump_from(&self, position: u8) -> Option<u8> {
+        let position = position as i8;
         // maybe rename this method
         if position > 31 {
             return None;
@@ -56,11 +102,16 @@ impl Direction {
             Direction::DownLeft => position + 7,
             Direction::DownRight => position + 9,
         };
-        if out > 31 {
+        if out > 31 || out < 0 {
             return None;
         }
-        Some(out)
 
+        let in_col = (position % 4) as i8;
+        let out_col = (out % 4) as i8;
+        if out_col - in_col != -1 && out_col - in_col != 1 {
+            return None
+        }
+        Some(out as u8)
     }
 }
 
@@ -73,6 +124,7 @@ pub enum ActionType {
 
 // source: 5, destination: 5, jump length: 5, jump directions: 8 * 2 bits (four directions), unused: 1
 /// Represents an action that can be made on a checkerboard
+// #[derive(Debug)]  // don't need to keep this
 pub struct Action(u32);
 
 impl Action {
@@ -207,37 +259,16 @@ impl Action {
     ///
     /// This is also wrapped in an option, because if the action represents a
     /// jump, then a notion of a move direction is not relevant.
-    // currently too bit for inline. try to pare this down a bit
-    // #[inline]
+    #[inline]
     pub fn move_direction(&self) -> Option<Direction> {
-        // ideally would like to condense this method
-        // also check logic again soon
-
         if self.action_type() == ActionType::Jump {
             return None;
         }
 
         let source = self.source();
         let destination = self.destination();
-        let diff = (destination as i8) - (source as i8);
-        // should aim to try to change this or move it elsewhere
-        if source / 4 % 2 == 0 {  // even rows
-            return match diff {
-                -4 => Some(Direction::UpLeft),
-                -3 => Some(Direction::UpRight),
-                4 => Some(Direction::DownLeft),
-                5 => Some(Direction::DownRight),
-                _ => None
-            };
-        } else {                  // odd rows
-            return match diff {
-                -5 => Some(Direction::UpLeft),
-                -4 => Some(Direction::UpRight),
-                3 => Some(Direction::DownLeft),
-                4 => Some(Direction::DownRight),
-                _ => None,
-            };
-        }
+
+        Direction::between(source, destination)
     }
 
     /// Generate movetext for a particular action
@@ -263,6 +294,12 @@ impl Action {
     }
 }
 
+impl fmt::Debug for Action {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.write_fmt(format_args!("Action({})", self.movetext()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,6 +311,12 @@ mod tests {
 
     #[test]
     fn relative_position_test() {
+        let dir = Direction::between(1, 10);
+        assert_eq!(dir, Some(Direction::DownRight));
+
+        let dir = Direction::between(15, 11);
+        assert_eq!(dir, Some(Direction::UpRight));
+
         let pos = Direction::DownRight.relative_to(1);
         assert_eq!(pos, Some(6));
 
@@ -286,8 +329,8 @@ mod tests {
         let pos = Direction::UpRight.relative_jump_from(43);
         assert_eq!(pos, None);
 
-        // let pos = Direction::UpRight.relative_jump_from(7);
-        // assert_eq!(pos, None);  // does not work yet
+        let pos = Direction::UpRight.relative_jump_from(7);
+        assert_eq!(pos, None);  // does not work yet
     }
 
     #[test]
