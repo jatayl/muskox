@@ -1,39 +1,45 @@
-// could be easiest to write this out myself and not use fail
-// do this for now though
-use failure::Fail;
+use snafu::Snafu;
 
 use crate::bitboard::Color;
 
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, PartialEq, Snafu)]
 pub enum ActionError {
-    #[fail(display = "Source position {} must be in possession of mover {:?}", source, color)]
-    SourceColorError { source: u8, color: Color },
-    #[fail(display = "Destination position {} must be empty", destination)]
+    #[snafu(display("Source position {} must be in possession of mover {:?}", position, color))]
+    SourceColorError { position: u8, color: Color },
+
+    #[snafu(display("Destination position {} must be empty", destination))]
     DestinationEmptyError { destination: u8 },
-    #[fail(display = "Skipped position {} must be have opponent of color {:?}", skipped, color)]
+
+    #[snafu(display("Skipped position {} must be have opponent of color {:?}", skipped, color))]
     SkippedPositionError { skipped: u8, color: Color },
-    #[fail(display = "One of the jumpers needs to be moved")]
+
+    #[snafu(display("One of the jumpers need to move!"))]
     HaveToJumpError,
-    #[fail(display = "Only kings can move backwards")]
+
+    #[snafu(display("Only kings can move backwards!"))]
     SinglePieceBackwardsError,
-    #[fail(display = "More jumping required")]
+
+    #[snafu(display("More jumping required!"))]
     NeedMoreJumpingError,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Snafu)]
 pub enum ParseBoardError {
-    #[fail(display = "There should be two colons ':' in the FEN string")]
+    #[snafu(display("There should be two colons ':' in the FEN string"))]
     ColonQuantityError,
-    #[fail(display = "{} is not a valid board color (Black 'B' or White 'W'", letter)]
+
+    #[snafu(display("{} is not a valid board color (Black 'B' or White 'W'", letter))]
     ColorError { letter: String },
-    #[fail(display = "{} is not a valid position 1 - 32", position)]
+
+    #[snafu(display("{} is not a valid position 1 - 32", position))]
     PositionError { position: String },
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, Snafu)]
 pub enum ParseActionError {
-    #[fail(display = "Number of moves must be 1 and 8 and not {}", quantity)]
+    #[snafu(display("Number of moves must be 1 and 8 and not {}", quantity))]
     MoveQuantityError { quantity: usize },
-    #[fail(display = "Position {} is invalid", position)]
+
+    #[snafu(display("Position {} is invalid", position))]
     PositionValueError { position: String },
 }

@@ -124,7 +124,7 @@ pub enum ActionType {
 
 // source: 5, destination: 5, jump length: 5, jump directions: 8 * 2 bits (four directions), unused: 1
 /// Represents an action that can be made on a checkerboard
-// #[derive(Debug)]  // don't need to keep this
+#[derive(Clone, Copy)]
 pub struct Action(u32);
 
 impl Action {
@@ -294,9 +294,15 @@ impl Action {
     }
 }
 
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.movetext())
+    }
+}
+
 impl fmt::Debug for Action {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_fmt(format_args!("Action({})", self.movetext()))
+        write!(f, "Action({})", self.movetext())
     }
 }
 

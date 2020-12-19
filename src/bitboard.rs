@@ -1,4 +1,5 @@
 use std::mem;
+use std::fmt;
 use std::collections::VecDeque;
 
 use crate::Action;
@@ -40,6 +41,20 @@ pub enum Winner {
 pub enum GameState {
     Completed(Winner),
     InProgress,
+}
+
+impl fmt::Display for GameState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &*self {
+            GameState::Completed(winner) => {
+                match winner {
+                    Winner::Player(player) => write!(f, "Winner: {:?}", player),
+                    Winner::Draw => write!(f, "Draw"),
+                }
+            },
+            GameState::InProgress => write!(f, "In progress"),
+        }
+    }
 }
 
 /// Represents a single state of a checkerboard
@@ -251,7 +266,7 @@ impl Bitboard {
         // ensure that the source has turn color
         if !self.coloring_eq(source, &self.turn) {
             let color = self.turn;
-            return Err(ActionError::SourceColorError { source, color });
+            return Err(ActionError::SourceColorError { position: source, color: color });
         }
 
         // ensure that destination is empty.
@@ -436,6 +451,11 @@ impl Bitboard {
         }
 
         actions
+    }
+
+    /// Returns the color of the turn's player
+    pub fn turn(&self) -> Color {
+        self.turn
     }
 
     /// Creates string FEN tag according to Portable Draughts Notation (PDN). Read more
@@ -846,7 +866,7 @@ mod tests {
         let action = Action::new_from_movetext("10-14").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
         let action = Action::new_from_movetext("23-18").unwrap();
-        assert_eq!(board.validate_action(&action), Err(ActionError::SourceColorError { source: 22, color: Black }));
+        assert_eq!(board.validate_action(&action), Err(ActionError::SourceColorError { position: 22, color: Black }));
 
         let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
         let action = Action::new_from_movetext("16-19").unwrap();
