@@ -6,7 +6,7 @@ use std::default;
 use crate::Bitboard;
 use crate::Action;
 use crate::movepick::MovePicker;
-use crate::movepick::PickContraint;
+use crate::movepick::PickConstraint;
 
 // convert this to lifetimes later...
 enum Command {
@@ -153,7 +153,8 @@ impl State {
 
     #[inline]
     fn pick_action(&mut self) {
-        let action = self.move_picker.pick(&self.board, &PickContraint::None);
+        //let action = self.move_picker.pick(&self.board, &PickConstraint::None);
+        let action = self.move_picker.pick(&self.board, &PickConstraint::Time(10));
 
         match action {
             Some(a) => println!("\n{}", a),

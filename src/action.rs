@@ -59,6 +59,7 @@ impl Direction {
         if position > 31 {
             return None;
         }
+        let position = position as i8;
         let out;
         // maybe make this a cache would be better in terms of simplicity and performance?
         // could defintely make it more compact
@@ -77,7 +78,7 @@ impl Direction {
                 Direction::DownRight => position + 4,
             }
         }
-        if out > 31 {
+        if out > 31 || out < 0 {
             return None;
         }
         // ensure that we dont escape the bounds on the board.
@@ -87,7 +88,7 @@ impl Direction {
         if out_col - in_col != 0 && out_col - in_col != 1 && out_col - in_col != -1 {
             return None
         }
-        Some(out)
+        Some(out as u8)
     }
 
     pub(crate) fn relative_jump_from(&self, position: u8) -> Option<u8> {
