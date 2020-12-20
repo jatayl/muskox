@@ -1,9 +1,12 @@
 use std::io::{self, Write};
 use std::error;
 use std::process;
+use std::default;
 
 use crate::Bitboard;
 use crate::Action;
+use crate::movepick::MovePicker;
+use crate::movepick::PickContraint;
 
 // convert this to lifetimes later...
 enum Command {
@@ -12,6 +15,7 @@ enum Command {
     ValidateAction(Action),
     TakeAction(Action),
     GenerateAllActions,
+    PickAction,
     GetTurn,
     Print,
     GetMoveHistory,
@@ -51,6 +55,7 @@ impl Command {
                 Ok(TakeAction(action))
             }
             "generate" => Ok(GenerateAllActions),
+            "pick" => Ok(PickAction),
             "turn" => Ok(GetTurn),
             "print" => Ok(Print),
             "history" => Ok(GetMoveHistory),
@@ -65,17 +70,20 @@ impl Command {
 // have command history as well maybe
 struct State {
     board: Bitboard,
+    move_picker: MovePicker,
     action_history: Vec<Action>,
 }
 
-impl State {
-    // support for fen later
+impl default::Default for State {
     fn default() -> State {
         let board = Bitboard::new();
+        let move_picker = MovePicker::default();
         let action_history = Vec::new();
-        State { board, action_history }
+        State { board, move_picker, action_history }
     }
+}
 
+impl State {
     fn execute(&mut self, command: &Command) {
         // match an abstract command to the function
         match command {
@@ -85,6 +93,7 @@ impl State {
             TakeAction(action) => self.take_action(action),
             GenerateAllActions => self.generate_all_actions(),
             GetTurn => self.get_turn(),
+            PickAction => self.pick_action(),
             Print => self.print(),
             GetMoveHistory => self.get_move_history(),
             Clear => self.clear(),
@@ -143,6 +152,16 @@ impl State {
     }
 
     #[inline]
+    fn pick_action(&self) {
+        let action = self.move_picker.pick(&self.board, &PickContraint::None);
+
+        match action {
+            Some(a) => println!("\n{}", a),
+            None => println!("no action to take!"),
+        }
+    }
+
+    #[inline]
     fn take_action(&mut self, action: &Action) {
         let validate = self.board.take_action(action);
         self.action_history.push(*action);
@@ -187,7 +206,7 @@ impl State {
     }
 }
 
-pub fn run() {
+pub fn run() -> ! {
     println!("Developed by James in Cary");
 
     let mut state = State::default();

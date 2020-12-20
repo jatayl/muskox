@@ -453,11 +453,6 @@ impl Bitboard {
         actions
     }
 
-    /// Returns the color of the turn's player
-    pub fn turn(&self) -> Color {
-        self.turn
-    }
-
     /// Creates string FEN tag according to Portable Draughts Notation (PDN). Read more
     /// about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
     ///
@@ -739,6 +734,26 @@ impl Bitboard {
         if is_king {
             self.kings |= mask;
         }
+    }
+
+    #[inline]
+    pub fn blacks(&self) -> Mask {
+        self.blacks
+    }
+
+    #[inline]
+    pub fn whites(&self) -> Mask {
+        self.whites
+    }
+
+    #[inline]
+    pub fn kings(&self) -> Mask {
+        self.kings
+    }
+
+    #[inline]
+    pub fn turn(&self) -> Color {
+        self.turn
     }
 }
 
