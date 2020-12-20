@@ -7,6 +7,7 @@ use crate::Action;
 use crate::Bitboard;
 use crate::bitboard::GameState;
 use crate::bitboard::Color;
+use crate::tt::TranspositionTable;
 
 // give this its own module with abstration later
 type Evaluator = Box<dyn Fn(&Bitboard) -> f32>;
@@ -38,23 +39,23 @@ static MAX_DEPTH: u32 = 25;
 static MAX_TIME: u32 = 300;
 
 pub struct MovePicker {
-    // can attach evaluation functions and parameters in here later when we have more
     evaluator: Evaluator,
+    tt: TranspositionTable,
 }
 
 impl default::Default for MovePicker {
     fn default() -> MovePicker {
-        MovePicker { evaluator: Box::new(simple_eval) }
+        let evaluator = Box::new(simple_eval);
+        let tt = TranspositionTable::new();
+
+        MovePicker { evaluator, tt }
     }
 }
 
 impl MovePicker {
-    pub fn pick(&self, board: &Bitboard, constraint: &PickContraint) -> Option<Action> {
+    pub fn pick(&mut self, board: &Bitboard, constraint: &PickContraint) -> Option<Action> {
         // will only do the depth one now...
         // only going to be single threaded at first
-        // no tranposition tables yet..
-
-        // need to ensure that there is a valid action
 
         board.generate_all_actions()
             .iter()
@@ -63,20 +64,24 @@ impl MovePicker {
     }
 
     #[inline]
-    pub fn evaluate_action(&self, board: &Bitboard, action: &Action, constraint: &PickContraint) -> f32 {
+    pub fn evaluate_action(&mut self, board: &Bitboard, action: &Action, constraint: &PickContraint) -> f32 {
         let board_p = board.take_action(&action).unwrap();
         self.evaluate_board(&board_p, &constraint)
     }
 
     // get list of top 5 moves and ratings
     #[inline]
-    pub fn evaluate_board(&self, board: &Bitboard, _constraint: &PickContraint) -> f32 {
+    pub fn evaluate_board(&mut self, board: &Bitboard, _constraint: &PickContraint) -> f32 {
         // name of this might be a bit confusing
         self.minmax_helper(&board, 5, f32::NEG_INFINITY, f32::INFINITY)
         
     }
 
-    fn minmax_helper(&self, board: &Bitboard, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
+    fn minmax_helper(&mut self, board: &Bitboard, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
+        if let Some(value) = self.tt.get(&board, depth) {
+            return value;
+        }
+
         if let GameState::Completed(_) = board.get_game_state() {
             return (self.evaluator)(&board);
         }
@@ -85,7 +90,7 @@ impl MovePicker {
             return (self.evaluator)(&board);
         }
 
-        match board.turn() {
+        let eval = match board.turn() {
             Color::Black => {
                 let mut max_eval = f32::NEG_INFINITY;
 
@@ -116,7 +121,11 @@ impl MovePicker {
 
                 min_eval
             },
-        }
+        };
+
+        self.tt.insert(&board, depth, eval);
+
+        eval
     }
 }
 

@@ -20,7 +20,7 @@ static MASK_R5: Mask = 0x07070707;
 // maybe want to consider making a piece enum so we can abstract the king
 
 /// Represents of the two colors that exists on a checkerboard
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Black,
     White,
@@ -58,7 +58,7 @@ impl fmt::Display for GameState {
 }
 
 /// Represents a single state of a checkerboard
-#[derive(Clone, Copy, Debug)]  // dont need to keep debug
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Bitboard {
     blacks: Mask,
     whites: Mask,

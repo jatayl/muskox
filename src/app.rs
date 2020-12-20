@@ -152,7 +152,7 @@ impl State {
     }
 
     #[inline]
-    fn pick_action(&self) {
+    fn pick_action(&mut self) {
         let action = self.move_picker.pick(&self.board, &PickContraint::None);
 
         match action {

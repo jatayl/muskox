@@ -3,6 +3,7 @@ pub mod bitboard;
 pub mod action;
 pub mod error;
 pub mod movepick;
+pub mod tt;
 
 pub use bitboard::Bitboard;
 pub use action::{Action, ActionType, Direction};
