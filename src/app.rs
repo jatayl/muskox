@@ -3,10 +3,8 @@ use std::error;
 use std::process;
 use std::default;
 
-use crate::Bitboard;
-use crate::Action;
-use crate::movepick::MovePicker;
-use crate::movepick::PickConstraint;
+use crate::board::{Bitboard, Action};
+use crate::search::{MovePicker, PickConstraint};
 
 // convert this to lifetimes later...
 enum Command {

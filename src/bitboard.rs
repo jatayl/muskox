@@ -2,11 +2,8 @@ use std::mem;
 use std::fmt;
 use std::collections::VecDeque;
 
-use crate::Action;
-use crate::ActionType;
-use crate::Direction;
-use crate::error::ActionError;
-use crate::error::ParseBoardError;
+use crate::board::{Action, ActionType, Direction};
+use crate::error::{ActionError, ParseBoardError};
 
 type Mask = u32;
 
@@ -68,7 +65,7 @@ pub struct Bitboard {
 
 impl Bitboard {
     /// Creates a new bitboard in the default, starting position
-    pub fn new() -> Bitboard {
+    pub fn new() -> Self {
         // initial state for a blank board
         Bitboard {
             blacks: 0x00000fff,
@@ -94,7 +91,7 @@ impl Bitboard {
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
     /// ```
-    pub fn new_from_fen(fen_string: &str) -> Result<Bitboard, ParseBoardError> {
+    pub fn new_from_fen(fen_string: &str) -> Result<Self, ParseBoardError> {
         // maybe clean up errors handling here. they are rather rigid could make them more useful
 
         let fen_string: String = fen_string.chars().filter(|c| !c.is_whitespace()).collect();
@@ -239,7 +236,7 @@ impl Bitboard {
     /// let action = Action::new_from_movetext("12-8").unwrap();
     /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
-    pub fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
+    pub fn take_action(&self, action: &Action) -> Result<Self, ActionError> {
         let mut board_p = self.clone();
 
         let source = action.source();
@@ -342,7 +339,7 @@ impl Bitboard {
 
     // might be best to package (Action, Bitboard) tuple in another format
     // will probably have to reoptimize this method at some point
-    pub fn generate_all_actions(&self) -> Vec<(Action, Bitboard)> {
+    pub fn generate_all_actions(&self) -> Vec<(Action, Self)> {
         // returns the next piece to check moves for
         let pop_piece = |mask: &mut Mask, color: &Color| {
             let position = match *color {

@@ -18,7 +18,7 @@ pub enum Direction {
 impl Direction {
     // these three methods need an assessment of implementation and naming
 
-    pub(crate) fn between(source: u8, destination: u8) -> Option<Direction> {
+    pub(crate) fn between(source: u8, destination: u8) -> Option<Self> {
         // this function is not safe yet... and its really messy
 
         let diff = (destination as i8) - (source as i8);
@@ -142,7 +142,7 @@ impl Action {
     ///
     /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
-    pub fn new_from_vector(positions: Vec<u8>) -> Result<Action, ParseActionError> {
+    pub fn new_from_vector(positions: Vec<u8>) -> Result<Self, ParseActionError> {
         // maybe make this method work for all iterators and not just vectors
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
@@ -201,7 +201,7 @@ impl Action {
     /// let action = Action::new_from_movetext("19-24").unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     /// ```
-    pub fn new_from_movetext(movetext: &str) -> Result<Action, ParseActionError> {
+    pub fn new_from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
         let positions: Vec<_> = movetext.split("-")
             .map(|x| x.parse::<u8>()
                 .or(Err(ParseActionError::PositionValueError { position: x.to_string() })))

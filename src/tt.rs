@@ -2,7 +2,7 @@ use std::sync::RwLock;
 
 use hashbrown::HashMap;
 
-use crate::Bitboard;
+use crate::board::Bitboard;
 
 // will need way of regulating size
 

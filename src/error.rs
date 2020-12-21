@@ -1,6 +1,6 @@
 use snafu::Snafu;
 
-use crate::bitboard::Color;
+use crate::board::Color;
 
 #[derive(Debug, PartialEq, Snafu)]
 pub enum ActionError {

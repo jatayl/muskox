@@ -1,17 +1,18 @@
 use std::cmp;
 use std::default;
-use std::thread;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::time::Duration;
-use std::os::unix::thread::JoinHandleExt;
+#[cfg(target_family = "unix")]
+use {
+    std::thread,
+    std::sync::mpsc,
+    std::os::unix::thread::JoinHandleExt,
+};
 
 use ordered_float::OrderedFloat;
 
-use crate::Action;
-use crate::Bitboard;
-use crate::bitboard::GameState;
-use crate::bitboard::Color;
-use crate::tt::TranspositionTable;
+use crate::board::{Bitboard, Action, GameState, Color};
+use crate::search::TranspositionTable;
 
 // give this its own module with abstration later
 type Evaluator = Arc<dyn Fn(&Bitboard) -> f32 + Send + Sync>;
@@ -49,7 +50,7 @@ pub struct MovePicker {
 }
 
 impl default::Default for MovePicker {
-    fn default() -> MovePicker {
+    fn default() -> Self {
         let evaluator = Arc::new(simple_eval);
         let tt = Arc::new(TranspositionTable::new());
 
@@ -75,7 +76,7 @@ impl MovePicker {
         match constraint {
             PickConstraint::None => compute_at_depth(6),
             PickConstraint::Depth(d) => compute_at_depth(*d),
-            PickConstraint::Time(t) => Self::iddps_helper(compute_at_depth, &Duration::from_secs((*t).into())),
+            PickConstraint::Time(t) => Self::iddfs_helper(compute_at_depth, &Duration::from_secs((*t).into())),
         }
     }
 
@@ -98,7 +99,7 @@ impl MovePicker {
             // have iterative deepening for None as well..
             PickConstraint::None => compute_at_depth(6),
             PickConstraint::Depth(d) => compute_at_depth(*d),
-            PickConstraint::Time(t) => Self::iddps_helper(compute_at_depth, &Duration::from_secs((*t).into())),
+            PickConstraint::Time(t) => Self::iddfs_helper(compute_at_depth, &Duration::from_secs((*t).into())),
         }
     }
 
@@ -153,7 +154,8 @@ impl MovePicker {
         eval
     }
 
-    fn iddps_helper<T, F>(f: F, duration: &Duration) -> T
+    #[cfg(target_family = "unix")]
+    fn iddfs_helper<T, F>(f: F, duration: &Duration) -> T
     where
         T: 'static + Send,
         F: Fn(u32) -> T + 'static + Send + Sync,
@@ -161,7 +163,6 @@ impl MovePicker {
         // not super enthused with the implementation of this feature
         // i dont like how the closure are set up in each of the functions above to make this work
         // seems like unneccesary overhead imo..
-
         let (tx, rx) = mpsc::channel();
 
         let thread_id = thread::spawn(move || {
@@ -176,7 +177,14 @@ impl MovePicker {
 
         unsafe { libc::pthread_cancel(thread_id) };
 
+        // get the most recent move suggested by the engine
+        // will only panic if iddps didnt find a result (almost impossible)
         rx.try_iter().last().unwrap()
+    }
+
+    #[cfg(target_family = "windows")]
+    fn iddfs_helper<F>(_: F, _: &Duration) -> ! {
+        panic!("Cannot run iterative deepening depth first search on Windows yet!");
     }
 }
 
@@ -187,21 +195,21 @@ pub enum PickConstraint {
 }
 
 impl PickConstraint {
-    pub fn depth(d: u32) -> Result<PickConstraint, &'static str> {
+    pub fn depth(d: u32) -> Result<Self, &'static str> {
         if d > MAX_DEPTH {
             return Err("Depth too large! Pick lower than 25");
         }
         Ok(PickConstraint::Depth(d))
     }
 
-    pub fn time(t: u32) -> Result<PickConstraint, &'static str> {
+    pub fn time(t: u32) -> Result<Self, &'static str> {
         if t > MAX_TIME {
             return Err("Time to large! Pick lower than 300 seconds")
         }
         Ok(PickConstraint::Time(t))
     }
 
-    pub fn none() -> PickConstraint {
+    pub fn none() -> Self {
         PickConstraint::None
     }
 }
