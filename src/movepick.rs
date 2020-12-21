@@ -1,13 +1,8 @@
 use std::cmp;
 use std::default;
-use std::sync::Arc;
+use std::thread;
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
-#[cfg(target_family = "unix")]
-use {
-    std::thread,
-    std::sync::mpsc,
-    std::os::unix::thread::JoinHandleExt,
-};
 
 use ordered_float::OrderedFloat;
 
@@ -36,12 +31,12 @@ fn simple_eval(board: &Bitboard) -> f32 {
     let black_kings = board.blacks() & board.kings();
     let white_kings = board.whites() & board.kings();
 
-    count_ones(board.blacks()) + count_ones(board.whites()) +
+    count_ones(board.blacks()) - count_ones(board.whites()) +
         count_ones(black_kings) - count_ones(white_kings)
 }
 
-static MAX_DEPTH: u32 = 25;
-static MAX_TIME: u32 = 300;
+static MAX_DEPTH: u32 = 8;
+static MAX_TIME: u32 = 300000;
 
 #[derive(Clone)]
 pub struct MovePicker {
@@ -75,8 +70,8 @@ impl MovePicker {
 
         match constraint {
             PickConstraint::None => compute_at_depth(6),
-            PickConstraint::Depth(d) => compute_at_depth(*d),
-            PickConstraint::Time(t) => Self::iddfs_helper(compute_at_depth, &Duration::from_secs((*t).into())),
+            PickConstraint::Depth(dep) => compute_at_depth(*dep),
+            PickConstraint::Time(dur) => Self::iddfs_helper(compute_at_depth, *dur, None),
         }
     }
 
@@ -98,8 +93,8 @@ impl MovePicker {
         match constraint {
             // have iterative deepening for None as well..
             PickConstraint::None => compute_at_depth(6),
-            PickConstraint::Depth(d) => compute_at_depth(*d),
-            PickConstraint::Time(t) => Self::iddfs_helper(compute_at_depth, &Duration::from_secs((*t).into())),
+            PickConstraint::Depth(dep) => compute_at_depth(*dep),
+            PickConstraint::Time(dur) => Self::iddfs_helper(compute_at_depth, *dur, None),
         }
     }
 
@@ -154,43 +149,52 @@ impl MovePicker {
         eval
     }
 
-    #[cfg(target_family = "unix")]
-    fn iddfs_helper<T, F>(f: F, duration: &Duration) -> T
+    fn iddfs_helper<T, F>(f: F, duration: Duration, depth_limit: Option<u32>) -> T
     where
         T: 'static + Send,
         F: Fn(u32) -> T + 'static + Send + Sync,
     {
-        // not super enthused with the implementation of this feature
-        // i dont like how the closure are set up in each of the functions above to make this work
-        // seems like unneccesary overhead imo..
-        let (tx, rx) = mpsc::channel();
+        // also this quitting method hangs some extra computation
+        // will need to find out how to cut that down
+        // might add a receiver into the type F
 
-        let thread_id = thread::spawn(move || {
-            for d in 1.. {
+        let (eval_tx, eval_rx) = mpsc::channel();
+        let (quit_tx, quit_rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let depths_iter: Box<dyn Iterator<Item = u32>> = match depth_limit {
+                Some(d) => Box::new(1..d),
+                None => Box::new(1..),
+            };
+
+            for d in depths_iter {
                 let eval = f(d);
+
+                // this does not do well enought at all. we are running way to much extra computation
+                match quit_rx.try_recv() {
+                    Ok(()) | Err(mpsc::TryRecvError::Disconnected) => break,
+                    Err(mpsc::TryRecvError::Empty) => (),
+                }
+
                 // send result
-                tx.send(eval).unwrap();
+                eval_tx.send(eval).unwrap();
             }
-        }).into_pthread_t();
+        });
 
-        thread::sleep(*duration);
+        // maybe make duration optional later..
+        thread::sleep(duration);
 
-        unsafe { libc::pthread_cancel(thread_id) };
+        quit_tx.send(()).unwrap();
 
         // get the most recent move suggested by the engine
         // will only panic if iddps didnt find a result (almost impossible)
-        rx.try_iter().last().unwrap()
-    }
-
-    #[cfg(target_family = "windows")]
-    fn iddfs_helper<F>(_: F, _: &Duration) -> ! {
-        panic!("Cannot run iterative deepening depth first search on Windows yet!");
+        eval_rx.try_iter().last().unwrap()
     }
 }
 
 pub enum PickConstraint {
     Depth(u32),
-    Time(u32),
+    Time(Duration),
     None,
 }
 
@@ -206,7 +210,7 @@ impl PickConstraint {
         if t > MAX_TIME {
             return Err("Time to large! Pick lower than 300 seconds")
         }
-        Ok(PickConstraint::Time(t))
+        Ok(PickConstraint::Time(Duration::from_millis(t.into())))
     }
 
     pub fn none() -> Self {

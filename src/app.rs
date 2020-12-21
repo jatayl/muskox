@@ -13,7 +13,8 @@ enum Command {
     ValidateAction(Action),
     TakeAction(Action),
     GenerateAllActions,
-    PickAction,
+    PickAction(PickConstraint),
+    EvaluateBoard(PickConstraint),
     GetTurn,
     Print,
     GetMoveHistory,
@@ -27,10 +28,6 @@ impl Command {
         // so unsafe hahaha
 
         let command_split: Vec<_> = command.split(" ").collect();
-
-        if command_split.len() != 1 && command_split.len() != 2 {
-            return Err(format!("Invalid command: {}!", command))?;
-        }
 
         // might want different assert size based on the command.
         // there could be really useful macros here.
@@ -53,7 +50,18 @@ impl Command {
                 Ok(TakeAction(action))
             }
             "generate" => Ok(GenerateAllActions),
-            "pick" => Ok(PickAction),
+            "best" => Ok(PickAction(match command_split.get(1) {
+                Some(&"depth") => PickConstraint::depth(command_split[2].parse::<u32>()?)?,
+                Some(&"timed") => PickConstraint::time(command_split[2].parse::<u32>()?)?,
+                Some(_) => panic!("bad bad bad!"),
+                None => PickConstraint::None,
+            })),
+            "evaluate" => Ok(EvaluateBoard(match command_split.get(1) {
+                Some(&"depth") => PickConstraint::depth(command_split[2].parse::<u32>()?)?,
+                Some(&"timed") => PickConstraint::time(command_split[2].parse::<u32>()?)?,
+                Some(_) => panic!("bad bad bad!"),
+                None => PickConstraint::None,
+            })),
             "turn" => Ok(GetTurn),
             "print" => Ok(Print),
             "history" => Ok(GetMoveHistory),
@@ -91,7 +99,8 @@ impl State {
             TakeAction(action) => self.take_action(action),
             GenerateAllActions => self.generate_all_actions(),
             GetTurn => self.get_turn(),
-            PickAction => self.pick_action(),
+            PickAction(constraint) => self.pick_action(constraint),
+            EvaluateBoard(constraint) => self.evaluate_board(constraint),
             Print => self.print(),
             GetMoveHistory => self.get_move_history(),
             Clear => self.clear(),
@@ -150,14 +159,19 @@ impl State {
     }
 
     #[inline]
-    fn pick_action(&mut self) {
+    fn pick_action(&self, constraint: &PickConstraint) {
         //let action = self.move_picker.pick(&self.board, &PickConstraint::None);
-        let action = self.move_picker.pick(&self.board, &PickConstraint::Time(10));
+        let action = self.move_picker.pick(&self.board, constraint);
 
         match action {
             Some(a) => println!("\n{}", a),
             None => println!("no action to take!"),
         }
+    }
+
+    #[inline]
+    fn evaluate_board(&self, constraint: &PickConstraint) {
+        println!("\n{}", self.move_picker.evaluate_board(&self.board, constraint));
     }
 
     #[inline]
@@ -181,7 +195,7 @@ impl State {
         let mut out = String::new();
 
         if self.action_history.len() == 0 {
-            println!("no moves taken yet");
+            println!("\nno moves taken yet");
             return
         }
 
@@ -224,7 +238,7 @@ pub fn run() -> ! {
 
         match command {
             Ok(cmd) => state.execute(&cmd),
-            Err(err) => println!("Error: {}", err),
+            Err(err) => println!("\nError: {}", err),
         }
 
         counter += 1;
