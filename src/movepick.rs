@@ -4,6 +4,7 @@ use std::thread;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use ordered_float::OrderedFloat;
 
 use crate::board::{Bitboard, Action, GameState, Color};
@@ -35,44 +36,31 @@ fn simple_eval(board: &Bitboard) -> f32 {
         count_ones(black_kings) - count_ones(white_kings)
 }
 
-static MAX_DEPTH: u32 = 8;
+static MAX_DEPTH: u32 = 25;
 static MAX_TIME: u32 = 300000;
+static NUM_THREADS: usize = 8;
 
 #[derive(Clone)]
 pub struct MovePicker {
     evaluator: Evaluator,
     tt: Arc<TranspositionTable>,
+    pool: Arc<ThreadPool>,
 }
 
 impl default::Default for MovePicker {
     fn default() -> Self {
         let evaluator = Arc::new(simple_eval);
         let tt = Arc::new(TranspositionTable::new());
+        let pool = Arc::new(ThreadPoolBuilder::new().num_threads(NUM_THREADS - 1).build().unwrap());
 
-        MovePicker { evaluator, tt }
+        MovePicker { evaluator, tt, pool }
     }
 }
 
 impl MovePicker {
+    #[inline]
     pub fn pick(&self, board: &Bitboard, constraint: &PickConstraint) -> Option<Action> {
-        // will only do the depth one now...
-        // only going to be single threaded at first
-
-        let me = self.clone();
-        let board = board.clone();
-
-        let compute_at_depth = move |d| {
-            board.generate_all_actions()
-                .iter()
-                .map(|a| a.0)  // get rid of the boards
-                .max_by_key(|a| OrderedFloat(me.evaluate_action(&board, &a, &PickConstraint::Depth(d))))
-        };
-
-        match constraint {
-            PickConstraint::None => compute_at_depth(6),
-            PickConstraint::Depth(dep) => compute_at_depth(*dep),
-            PickConstraint::Time(dur) => Self::iddfs_helper(compute_at_depth, *dur, None),
-        }
+        Some(self.search(&board, &constraint).get(0)?.0)
     }
 
     #[inline]
@@ -85,21 +73,56 @@ impl MovePicker {
 
     #[inline]
     pub fn evaluate_board(&self, board: &Bitboard, constraint: &PickConstraint) -> f32 {
+        self.search(&board, &constraint).get(0).unwrap().1
+    }
+
+    pub fn search(&self, board: &Bitboard, constraint: &PickConstraint) -> Vec<(Action, f32)> {
         let me = self.clone();
         let board = board.clone();
 
-        let compute_at_depth = move |d| me.minmax_helper(&board, d, f32::NEG_INFINITY, f32::INFINITY);
+        let compute_at_depth = move |d| {
+            let actions: Vec<_> = board.generate_all_actions().iter().map(|a| a.0).collect();
+            let evals: Vec<_> = actions.iter()
+                .map(|a| board.take_action(&a).unwrap())
+                .map(|b| me.minmax_helper(&b, d, f32::NEG_INFINITY, f32::INFINITY))
+                .map(|f| OrderedFloat(f))
+                .collect();
+            let mut out: Vec<_> = actions.iter()
+                .zip(evals.iter())
+                .collect();
+            // sort based on the evaluations
+            out.sort_by(|a, b| match board.turn() {
+                Color::White => a.1.cmp(b.1),
+                Color::Black => b.1.cmp(a.1),
+            });
+            out.iter()
+                .map(|(&a, &b)| (a, *b))  // copy all of the values and get rid of ordered float wrapper
+                .take(5) // only take the top fives moves.
+                .collect()
+        };
 
         match constraint {
             // have iterative deepening for None as well..
-            PickConstraint::None => compute_at_depth(6),
+            PickConstraint::None => compute_at_depth(17),
             PickConstraint::Depth(dep) => compute_at_depth(*dep),
-            PickConstraint::Time(dur) => Self::iddfs_helper(compute_at_depth, *dur, None),
+            PickConstraint::Time(dur) => self.iddfs_helper(compute_at_depth, *dur, None),
         }
     }
 
+    #[allow(dead_code, unused_variables)]
+    fn shard_helper(&self, board: &Bitboard) -> (Action, f32) {
+        // this will break up a task into multiple shards that each thread in the threadpool can tackle
+        // NOT IMPLEMENTED YET! :)
+
+        // assert that depth is greater than 2
+
+        let next_actions = board.generate_all_actions();
+
+        (board.generate_all_actions()[0].0, 0.)
+    }
+
     fn minmax_helper(&self, board: &Bitboard, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
-        if let Some(value) = self.tt.get(&board, depth) {
+        if let Some(value) = self.tt.probe(&board, depth) {
             return value;
         }
 
@@ -144,12 +167,12 @@ impl MovePicker {
             },
         };
 
-        self.tt.insert(&board, depth, eval);
+        self.tt.save(&board, depth, eval);
 
         eval
     }
 
-    fn iddfs_helper<T, F>(f: F, duration: Duration, depth_limit: Option<u32>) -> T
+    fn iddfs_helper<T, F>(&self, f: F, duration: Duration, depth_limit: Option<u32>) -> T
     where
         T: 'static + Send,
         F: Fn(u32) -> T + 'static + Send + Sync,
@@ -161,7 +184,7 @@ impl MovePicker {
         let (eval_tx, eval_rx) = mpsc::channel();
         let (quit_tx, quit_rx) = mpsc::channel();
 
-        thread::spawn(move || {
+        self.pool.spawn(move || {
             let depths_iter: Box<dyn Iterator<Item = u32>> = match depth_limit {
                 Some(d) => Box::new(1..d),
                 None => Box::new(1..),

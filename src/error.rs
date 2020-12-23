@@ -28,7 +28,7 @@ pub enum ParseBoardError {
     #[snafu(display("There should be two colons ':' in the FEN string"))]
     ColonQuantityError,
 
-    #[snafu(display("{} is not a valid board color (Black 'B' or White 'W'", letter))]
+    #[snafu(display("{} is not a valid board color (Black 'B' or White 'W')", letter))]
     ColorError { letter: String },
 
     #[snafu(display("{} is not a valid position 1 - 32", position))]
