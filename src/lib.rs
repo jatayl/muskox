@@ -5,6 +5,7 @@ mod bitboard;
 mod action;
 mod movepick;
 mod tt;
+mod evaluation;
 
 pub mod board {
     pub use super::bitboard::*;
@@ -14,4 +15,5 @@ pub mod board {
 pub mod search {
     pub use super::movepick::*;
     pub use super::tt::*;
+    pub use super::evaluation::*;
 }

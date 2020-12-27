@@ -338,7 +338,7 @@ impl Bitboard {
 
     // might be best to package (Action, Bitboard) tuple in another format
     // will probably have to reoptimize this method at some point
-    pub fn generate_all_actions(&self) -> Vec<(Action, Self)> {
+    pub fn generate_all_actions(&self) -> Vec<ActionBitboardPair> {
         // returns the next piece to check moves for
         let pop_piece = |mask: &mut Mask, color: &Color| {
             let position = match *color {
@@ -387,7 +387,10 @@ impl Bitboard {
                         board_p.add_piece(candidate, &self.turn, self.is_king(mover as u8));
                         board_p.remove_piece(mover as u8);
 
-                        actions.push((action, board_p));
+                        actions.push(ActionBitboardPair {
+                            action: action,
+                            board: board_p,
+                        });
                     }
                 }
             },
@@ -436,7 +439,10 @@ impl Bitboard {
 
                         // check if we cannot jump anymore
                         if (board_p.get_jumpers(&board.turn) & (1 << candidate) == 0) | (!starts_as_king & ends_as_king) {
-                            actions.push((action, board_p));
+                            actions.push(ActionBitboardPair {
+                                action: action,
+                                board: board_p,
+                            });
                             continue;
                         }
                         // other wise put it in the deque
@@ -750,6 +756,23 @@ impl Bitboard {
     #[inline]
     pub fn turn(&self) -> Color {
         self.turn
+    }
+}
+
+pub struct ActionBitboardPair {
+    action: Action,
+    board: Bitboard,
+}
+
+impl ActionBitboardPair {
+    #[inline]
+    pub fn action(&self) -> Action {
+        self.action
+    }
+
+    #[inline]
+    pub fn board(&self) -> Bitboard {
+        self.board
     }
 }
 

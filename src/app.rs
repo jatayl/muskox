@@ -139,7 +139,7 @@ impl State {
         }
 
         all_action_pairs.iter()
-            .map(|p| p.0)
+            .map(|p| p.action())
             .map(|a| a.to_string())
             .for_each(|t| {
                 out.push_str(&t);
