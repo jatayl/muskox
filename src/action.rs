@@ -138,7 +138,7 @@ impl Action {
     /// # Examples
     ///
     /// ```
-    /// use muskox::Action;
+    /// use muskox::board::Action;
     ///
     /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
@@ -196,7 +196,7 @@ impl Action {
     /// # Examples
     ///
     /// ```
-    /// use muskox::Action;
+    /// use muskox::board::Action;
     ///
     /// let action = Action::new_from_movetext("19-24").unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.

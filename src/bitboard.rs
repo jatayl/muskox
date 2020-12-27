@@ -86,7 +86,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::Bitboard;
+    /// use muskox::board::Bitboard;
     ///
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
@@ -156,8 +156,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::Bitboard;
-    /// use muskox::bitboard::GameState;
+    /// use muskox::board::{Bitboard, GameState};
     ///
     /// let board = Bitboard::new();
     /// assert_eq!(board.get_game_state(), GameState::InProgress);
@@ -195,7 +194,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::{Bitboard, Action};
+    /// use muskox::board::{Bitboard, Action};
     /// use muskox::error::ActionError;
     ///
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
@@ -225,7 +224,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::{Bitboard, Action};
+    /// use muskox::board::{Bitboard, Action};
     /// use muskox::error::ActionError;
     ///
     /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
@@ -456,7 +455,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::bitboard::Bitboard;
+    /// use muskox::board::Bitboard;
     ///
     /// let b = Bitboard::new();
     /// assert_eq!(b.fen(), "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12");
@@ -502,7 +501,7 @@ impl Bitboard {
     /// # Examples
     ///
     /// ```
-    /// use muskox::bitboard::Bitboard;
+    /// use muskox::board::Bitboard;
     ///
     /// let board = Bitboard::new();
     /// println!("{}", board.pretty());
