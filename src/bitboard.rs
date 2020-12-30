@@ -1,9 +1,9 @@
 use std::mem;
-use std::fmt;
 use std::collections::VecDeque;
 
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
+use crate::search::{Searchable, Optim, ActionStatePair, GameState, Winner, Side};
 
 type Mask = u32;
 
@@ -24,32 +24,11 @@ pub enum Color {
 }
 use Color::*;
 
-/// Represents a winner of a checkers game. The winner can either be a particular
-/// player (denoted by [Color](enum.Color.html)) or a draw
-#[derive(Debug, PartialEq)]
-pub enum Winner {
-    Player(Color),
-    Draw
-}
-
-/// Represents the current state of a chess game. It is either completed with a 
-/// [winner](enum.Winner.html) or still in progress.
-#[derive(Debug, PartialEq)]
-pub enum GameState {
-    Completed(Winner),
-    InProgress,
-}
-
-impl fmt::Display for GameState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
-            GameState::Completed(winner) => {
-                match winner {
-                    Winner::Player(player) => write!(f, "Winner: {:?}", player),
-                    Winner::Draw => write!(f, "Draw"),
-                }
-            },
-            GameState::InProgress => write!(f, "In progress"),
+impl Side for Color {
+    fn optim(&self) -> Optim {
+        match self {
+            White => Optim::Min,
+            Black => Optim::Max,
         }
     }
 }
@@ -148,36 +127,6 @@ impl Bitboard {
         }
 
         Ok(Bitboard{ blacks, whites, kings, turn })
-    }
-
-    /// Returns a [GameState](enum.GameState.html) enum that contains information about the
-    /// state of the game on the current bitboard.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use muskox::board::{Bitboard, GameState};
-    ///
-    /// let board = Bitboard::new();
-    /// assert_eq!(board.get_game_state(), GameState::InProgress);
-    /// ```
-    pub fn get_game_state(&self) -> GameState {
-        // check if somebody can't move
-        if self.turn == Black && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
-            return GameState::Completed(Winner::Player(White));
-        }
-        if self.turn == White && self.get_movers(&White) == 0 && self.get_jumpers(&White) == 0 {
-            return GameState::Completed(Winner::Player(Black));
-        }
-
-        // need to figure out how to determine if there is a draw
-        // maybe make it so the computer can agree to a draw
-        if false {
-            return GameState::Completed(Winner::Draw);
-        }
-
-        // if none of these are satisfied, then the game is still in progress
-        GameState::InProgress
     }
 
     /// Determines whether a certain action is valid or not.
@@ -336,8 +285,6 @@ impl Bitboard {
         Ok(board_p)
     }
 
-    // might be best to package (Action, Bitboard) tuple in another format
-    // will probably have to reoptimize this method at some point
     pub fn generate_all_actions(&self) -> Vec<ActionBitboardPair> {
         // returns the next piece to check moves for
         let pop_piece = |mask: &mut Mask, color: &Color| {
@@ -752,11 +699,6 @@ impl Bitboard {
     pub fn kings(&self) -> Mask {
         self.kings
     }
-
-    #[inline]
-    pub fn turn(&self) -> Color {
-        self.turn
-    }
 }
 
 pub struct ActionBitboardPair {
@@ -775,6 +717,287 @@ impl ActionBitboardPair {
         self.board
     }
 }
+
+
+
+impl Searchable for Bitboard {
+    type Action = Action;
+    type Side = Color;
+
+    /// Returns a [GameState](enum.GameState.html) enum that contains information about the
+    /// state of the game on the current bitboard.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::board::Bitboard;
+    /// use muskox::search::{GameState, Searchable};
+    ///
+    /// let board = Bitboard::new();
+    /// assert_eq!(board.get_game_state(), GameState::InProgress);
+    /// ```
+    fn get_game_state(&self) -> GameState<Bitboard> {
+        // check if somebody can't move
+        if self.turn == Black && self.get_movers(&Black) == 0 && self.get_jumpers(&Black) == 0 {
+            return GameState::Completed(Winner::Player(White));
+        }
+        if self.turn == White && self.get_movers(&White) == 0 && self.get_jumpers(&White) == 0 {
+            return GameState::Completed(Winner::Player(Black));
+        }
+
+        // need to figure out how to determine if there is a draw
+        // maybe make it so the computer can agree to a draw
+        if false {
+            return GameState::Completed(Winner::Draw);
+        }
+
+        // if none of these are satisfied, then the game is still in progress
+        GameState::InProgress
+    }
+
+    fn generate_all_actions(&self) -> Vec<ActionStatePair<Bitboard>> {
+        // returns the next piece to check moves for
+        let pop_piece = |mask: &mut Mask, color: &Color| {
+            let position = match *color {
+                White => mask.trailing_zeros(),
+                Black => (0x80000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+            };
+            *mask ^= 1 << position;
+            position
+        };
+
+        if let GameState::Completed(_) = self.get_game_state() {
+            return Vec::new();
+        }
+
+        let jumpers = self.get_jumpers(&self.turn);
+
+        let action_type = match jumpers {
+            0 => ActionType::Move,
+            _ => ActionType::Jump,
+        };
+
+        let mut actions = Vec::new();
+
+        // could check tree based search performance
+        match action_type {
+            ActionType::Move => {
+                // append all of the possible moves
+                let mut movers = self.get_movers(&self.turn);
+
+                while movers != 0 {
+                    let mover = pop_piece(&mut movers, &self.turn);
+
+                    let base_action = vec![mover as u8];
+
+                    let move_candidates = self.next_position_possibilities(mover as u8, &action_type);
+
+                    for candidate in move_candidates {
+                        let mut action = base_action.clone();
+                        action.push(candidate);
+                        let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
+                        let action = Action::new_from_vector(action).unwrap();
+
+                        let mut board_p = self.clone();
+                        
+                        // apply move on pieces
+                        board_p.add_piece(candidate, &self.turn, self.is_king(mover as u8));
+                        board_p.remove_piece(mover as u8);
+
+                        actions.push(ActionStatePair::new(action, board_p));
+                    }
+                }
+            },
+            ActionType::Jump => {
+                // keep a running queue until it is empty
+                let mut boards_in_progress = VecDeque::new();
+
+                // set up the initial pieces to check.
+                let mut jumpers = self.get_jumpers(&self.turn);
+
+                while jumpers != 0 {
+                    let position = pop_piece(&mut jumpers, &self.turn);
+
+                    let base_action = vec![position as u8];
+
+                    boards_in_progress.push_back((self.clone(), base_action));
+                }
+
+                while let Some((board, base_action)) = boards_in_progress.pop_front() {
+                    // can only pop the piece that has been jumping [last element in action]
+                    let &jumper = base_action.last().unwrap();
+
+                    // generate all possible new boards based on jumpers.
+                    let jump_candidates = self.next_position_possibilities(jumper, &action_type);
+
+                    for candidate in jump_candidates {
+                        let mut action_vec = base_action.clone();
+                        action_vec.push(candidate);
+                        let action = Action::new_from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect()).unwrap();
+
+                        let direction = Direction::between(jumper, candidate).unwrap();
+
+                        let starts_as_king = board.is_king(jumper);
+
+                        let ends_as_king = {
+                            let dest_row = candidate / 4;
+                            // will be a king if it was a king or will be in end row last
+                            starts_as_king || dest_row == 0 || dest_row == 7
+                        };
+
+                        // apply jump on piece
+                        let mut board_p = board.clone();
+                        board_p.add_piece(candidate, &board.turn, ends_as_king);
+                        board_p.remove_piece(jumper);
+                        board_p.remove_piece(direction.relative_to(jumper).unwrap());
+
+                        // check if we cannot jump anymore
+                        if (board_p.get_jumpers(&board.turn) & (1 << candidate) == 0) | (!starts_as_king & ends_as_king) {
+                            actions.push(ActionStatePair::new(action, board_p));
+                            continue;
+                        }
+                        // other wise put it in the deque
+                        boards_in_progress.push_back((board_p, action_vec));
+                    }
+                }
+            },
+        }
+
+        actions
+    }
+
+    /// Returns the ensuing bitboard after making a particular action by a player.
+    ///
+    /// This information is also encoded in a rust `Result`. If the action is valid, `Ok`
+    /// wrapping the resultant bitboard is returned; if not, then the `Err` option is returned
+    /// wrapping [ActionError](crate.error.enum.ActionError.html) with the reason for error.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - An [action](muskox/action/struct.Action.html) representing the particular
+    /// move to take
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use muskox::board::{Bitboard, Action};
+    /// use muskox::error::ActionError;
+    ///
+    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+    ///
+    /// let action = Action::new_from_movetext("22-17").unwrap();
+    /// assert_eq!(board.take_action(&action).unwrap().fen(), "W:WK10,K15,18,24,27,28:B12,16,K17,20,K25,K29");
+    ///
+    /// let action = Action::new_from_movetext("12-8").unwrap();
+    /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
+    /// ```
+    fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
+        let mut board_p = self.clone();
+
+        let source = action.source();
+        let destination = action.destination();
+
+        let starts_as_king = self.is_king(source);
+
+        let ends_as_king = {
+            let dest_row = destination / 4;
+            // will be a king if it was a king or will be in end row last
+            starts_as_king || dest_row == 0 || dest_row == 7
+        };
+
+        // sketchy way of flipping the turn color enum
+        // maybe just match with the opposite color instead
+        let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+
+        // erase color from source
+        board_p.remove_piece(source);
+
+        // add color to destination
+        board_p.add_piece(destination, &self.turn, ends_as_king);
+
+        // ensure that the source has turn color
+        if !self.coloring_eq(source, &self.turn) {
+            let color = self.turn;
+            return Err(ActionError::SourceColorError { position: source, color: color });
+        }
+
+        // ensure that destination is empty.
+        if !self.is_empty(destination) {
+            return Err(ActionError::DestinationEmptyError { destination });
+        }
+
+        match action.action_type() {
+            ActionType::Move => {
+                // ensure that no jumpers are available
+                if self.get_jumpers(&self.turn) != 0 {
+                    return Err(ActionError::HaveToJumpError);
+                }
+
+                // ensure that it only moves backwards if source is a king
+                // reformat the next dozen or so lines
+                let move_direction = action.move_direction().unwrap();
+
+                if (move_direction == Direction::UpLeft || move_direction == Direction::UpRight) &&
+                        self.turn == Black && !self.is_king(source) {
+                    return Err(ActionError::SinglePieceBackwardsError);
+                }
+
+                if (move_direction == Direction::DownLeft || move_direction == Direction::DownRight) &&
+                        self.turn == White && !self.is_king(source) {
+                    return Err(ActionError::SinglePieceBackwardsError);
+                }
+            },
+
+            ActionType::Jump => {
+                let mut curr = source;
+                // maybe make a jump iterator. that would be super cool!
+                for i in 0..action.jump_len() {
+                    let jump_direction = action.jump_direction(i).unwrap();
+
+                    // ensure that only jump backwards if it is a king
+                    if (jump_direction == Direction::UpLeft || jump_direction == Direction::UpRight) &&
+                            self.turn == Black && !starts_as_king {
+                        return Err(ActionError::SinglePieceBackwardsError);
+                    }
+
+                    if (jump_direction == Direction::DownLeft || jump_direction == Direction::DownRight) &&
+                            self.turn == White && !starts_as_king {
+                        return Err(ActionError::SinglePieceBackwardsError);
+                    }
+
+                    // see if we can try to use bitmasking to get this next time
+                    let skipped_over = jump_direction.relative_to(curr).unwrap();
+
+                    // ensure that it actually jumps over another piece that is not its own color
+                    if !self.coloring_eq(skipped_over, &opponent_color) {
+                        return Err(ActionError::SkippedPositionError {
+                            skipped: skipped_over,
+                            color: opponent_color,
+                        });
+                    }
+
+                    board_p.remove_piece(skipped_over);
+
+                    curr = jump_direction.relative_jump_from(curr).unwrap();
+                }
+                // ensure that it there isnt another jump for it to do at destination
+                if (board_p.get_jumpers(&self.turn) & 1 << destination != 0) & !(!starts_as_king & ends_as_king) {
+                    return Err(ActionError::NeedMoreJumpingError);
+                }
+            }
+        }
+
+        board_p.turn = opponent_color;
+
+        Ok(board_p)
+    }
+
+    #[inline]
+    fn turn(&self) -> Color {
+        self.turn
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

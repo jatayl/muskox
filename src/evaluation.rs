@@ -3,19 +3,19 @@ use std::sync::Arc;
 use std::ops::Fn;
 
 use crate::board::Bitboard;
+use crate::search::Evaluator;
 
-// enable attaching external classical functions and nnue models?
-
+#[allow(dead_code)]
 #[derive(Clone)]
-pub enum Evaluator {
+pub enum BoardEvaluator {
     Classical(Arc<dyn Fn(&Bitboard) -> f32 + Send +Sync>),
     Nnue,
 }
-use Evaluator::*;
+use BoardEvaluator::*;
 
-impl Evaluator {
+impl Evaluator<Bitboard> for BoardEvaluator {
     #[inline]
-    pub fn eval(&self, board: &Bitboard) -> f32 {
+    fn eval(&self, board: &Bitboard) -> f32 {
         match self {
             Classical(f) => f(&board),
             Nnue => panic!("Cannot use NNUE evaluation yet!"),
@@ -23,7 +23,7 @@ impl Evaluator {
     }
 }
 
-impl default::Default for Evaluator {
+impl default::Default for BoardEvaluator {
     fn default() -> Self {
         Classical(Arc::new(|board: &Bitboard| {
             // need the evaluation for the finished game.,..

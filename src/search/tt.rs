@@ -2,7 +2,7 @@ use std::sync::RwLock;
 
 use hashbrown::HashMap;
 
-use crate::board::Bitboard;
+use crate::search::Searchable;
 
 // will need way of regulating size
 
@@ -12,25 +12,25 @@ struct TTValue {
 }
 
 // maybe use dashmap instead if it is threadsafe...
-pub struct TranspositionTable {
-    data: RwLock<HashMap<Bitboard, TTValue>>,
+pub struct TranspositionTable<S: Searchable> {
+    data: RwLock<HashMap<S, TTValue>>,
 }
 
-impl TranspositionTable {
+impl<S: Searchable> TranspositionTable<S> {
     pub fn new() -> Self {
         let data = RwLock::new(HashMap::new());
         TranspositionTable { data }
     }
 
-    pub fn save(&self, board: &Bitboard, depth: u32, score: f32) {
+    pub fn save(&self, state: &S, depth: u32, score: f32) {
         let value = TTValue { depth, score };
-        // copying of the board isnt great but think it is the only thing i can do
-        self.data.write().unwrap().insert(*board, value);
+        // copying of the state isnt great but think it is the only thing i can do
+        self.data.write().unwrap().insert(*state, value);
     }
 
-    pub fn probe(&self, board: &Bitboard, depth: u32) -> Option<f32> {
+    pub fn probe(&self, state: &S, depth: u32) -> Option<f32> {
         let data = self.data.read().unwrap();
-        let value = data.get(&board)?;
+        let value = data.get(&state)?;
 
         // if the score was captured too deep then we dont want it
         if value.depth < depth {

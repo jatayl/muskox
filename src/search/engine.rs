@@ -1,5 +1,4 @@
 use std::cmp;
-use std::default;
 use std::thread;
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -7,57 +6,52 @@ use std::time::Duration;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use ordered_float::OrderedFloat;
 
-use crate::board::{Bitboard, Action, GameState, Color};
-use crate::search::{TranspositionTable, Evaluator};
+use crate::search::{TranspositionTable, Searchable, Evaluator, Optim, Side, GameState};
 
 static MAX_DEPTH: u32 = 25;
 static MAX_TIME: u32 = 300000;
 static NUM_THREADS: usize = 8;
 
 #[derive(Clone)]
-pub struct MovePicker {
-    evaluator: Evaluator,
-    tt: Arc<TranspositionTable>,
+pub struct Engine<S: Searchable> {
+    evaluator: Arc<dyn Evaluator<S>>,
+    tt: Arc<TranspositionTable<S>>,
     pool: Arc<ThreadPool>,
 }
 
-impl default::Default for MovePicker {
-    fn default() -> Self {
-        let evaluator = Evaluator::default();
+impl<S: Searchable> Engine<S> {
+    pub fn new(evaluator: Arc<dyn Evaluator<S>>) -> Self {
         let tt = Arc::new(TranspositionTable::new());
         let pool = Arc::new(ThreadPoolBuilder::new().num_threads(NUM_THREADS - 1).build().unwrap());
 
-        MovePicker { evaluator, tt, pool }
-    }
-}
-
-impl MovePicker {
-    #[inline]
-    pub fn pick(&self, board: &Bitboard, constraint: &PickConstraint) -> Option<Action> {
-        Some(self.search(&board, &constraint).get(0)?.action())
+        Engine { evaluator, tt, pool }
     }
 
     #[inline]
-    pub fn evaluate_action(&self, board: &Bitboard, action: &Action, constraint: &PickConstraint) -> f32 {
-        let board_p = board.take_action(&action).unwrap();
-        self.evaluate_board(&board_p, &constraint)
+    pub fn pick(&self, state: &S, constraint: &PickConstraint) -> Option<S::Action> {
+        Some(self.search(&state, &constraint).get(0)?.action())
     }
-
-    // get list of top 5 moves and ratings
 
     #[inline]
-    pub fn evaluate_board(&self, board: &Bitboard, constraint: &PickConstraint) -> f32 {
-        self.search(&board, &constraint).get(0).unwrap().score()
+    pub fn evaluate_action(&self, state: &S, action: &S::Action, constraint: &PickConstraint) -> f32 {
+        let state_p = state.take_action(&action).unwrap();
+        self.evaluate_state(&state_p, &constraint)
     }
 
-    pub fn search(&self, board: &Bitboard, constraint: &PickConstraint) -> Vec<ActionScorePair> {
+    #[inline]
+    pub fn evaluate_state(&self, state: &S, constraint: &PickConstraint) -> f32 {
+        self.search(&state, &constraint).get(0).unwrap().score()
+    }
+
+    pub fn search(&self, state: &S, constraint: &PickConstraint) -> Vec<ActionScorePair<S>> {
         let me = self.clone();
-        let board = board.clone();
+        let state = state.clone();
 
         let compute_at_depth = move |d| {
-            let actions: Vec<_> = board.generate_all_actions().iter().map(|a| a.action()).collect();
+            let action_states = state.generate_all_actions();
+            let actions: Vec<_> = action_states.iter().map(|a| a.action()).collect();
             let evals: Vec<_> = actions.iter()
-                .map(|a| board.take_action(&a).unwrap())
+                .map(|a| state.take_action(&a).unwrap())
                 .map(|b| me.minmax_helper(&b, d, f32::NEG_INFINITY, f32::INFINITY))
                 .map(|f| OrderedFloat(f))
                 .collect();
@@ -65,12 +59,12 @@ impl MovePicker {
                 .zip(evals.iter())
                 .collect();
             // sort based on the evaluations
-            out.sort_by(|a, b| match board.turn() {
-                Color::White => a.1.cmp(b.1),
-                Color::Black => b.1.cmp(a.1),
+            out.sort_by(|a, b| match state.turn().optim() {
+                Optim::Min => a.1.cmp(b.1),
+                Optim::Max => b.1.cmp(a.1),
             });
             out.iter()
-                .map(|(&a, &b)| ActionScorePair {action: a, score: *b})  // copy all of the values and get rid of ordered float wrapper
+                .map(|(&a, &b)| ActionScorePair {action: *a, score: *b})  // copy all of the values and get rid of ordered float wrapper
                 .take(5) // only take the top fives moves.
                 .collect()
         };
@@ -84,40 +78,40 @@ impl MovePicker {
     }
 
     #[allow(dead_code, unused_variables)]
-    fn shard_helper(&self, board: &Bitboard) -> ActionScorePair {
+    fn shard_helper(&self, state: &S) -> ActionScorePair<S> {
         // this will break up a task into multiple shards that each thread in the threadpool can tackle
         // NOT IMPLEMENTED YET! :)
 
         // assert that depth is greater than 2
 
-        let next_actions = board.generate_all_actions();
+        let next_actions = state.generate_all_actions();
 
         ActionScorePair {
-            action: board.generate_all_actions()[0].action(),
+            action: *state.generate_all_actions()[0].action(),
             score: 0.
         }
     }
 
-    fn minmax_helper(&self, board: &Bitboard, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
-        if let Some(value) = self.tt.probe(&board, depth) {
+    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
+        if let Some(value) = self.tt.probe(&state, depth) {
             return value;
         }
 
-        if let GameState::Completed(_) = board.get_game_state() {
-            return self.evaluator.eval(&board);
+        if let GameState::Completed(_) = state.get_game_state() {
+            return self.evaluator.eval(&state);
         }
         // ideally merge this above when we figure out why it wont work
         if depth == 0 {
-            return self.evaluator.eval(&board);
+            return self.evaluator.eval(&state);
         }
 
-        let eval = match board.turn() {
-            Color::Black => {
+        let eval = match state.turn().optim() {
+            Optim::Max => {
                 let mut max_eval = f32::NEG_INFINITY;
 
-                // isolate only the next board...
-                for board_p in board.generate_all_actions().iter().map(|a| a.board()) {
-                    let eval = self.minmax_helper(&board_p, depth - 1, alpha, beta);
+                // isolate only the next state...
+                for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
                     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
                     alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(eval));
                     if beta <= alpha {
@@ -128,11 +122,11 @@ impl MovePicker {
                 max_eval
             },
 
-            Color::White => {
+            Optim::Min => {
                 let mut min_eval = f32::INFINITY;
 
-                for board_p in board.generate_all_actions().iter().map(|a| a.board()) {
-                    let eval = self.minmax_helper(&board_p, depth - 1, alpha, beta);
+                for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
                     min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
                     beta = *cmp::min(OrderedFloat(beta), OrderedFloat(eval));
                     if beta <= alpha {
@@ -144,7 +138,7 @@ impl MovePicker {
             },
         };
 
-        self.tt.save(&board, depth, eval);
+        self.tt.save(&state, depth, eval);
 
         eval
     }
@@ -192,14 +186,14 @@ impl MovePicker {
     }
 }
 
-pub struct ActionScorePair {
-    action: Action,
+pub struct ActionScorePair<S: Searchable> {
+    action: S::Action,
     score: f32,
 }
 
-impl ActionScorePair {
+impl<S: Searchable> ActionScorePair<S> {
     #[inline]
-    fn action(&self) -> Action {
+    fn action(&self) -> S::Action {
         self.action
     }
 

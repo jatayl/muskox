@@ -2,9 +2,11 @@ use std::io::{self, Write};
 use std::error;
 use std::process;
 use std::default;
+use std::sync::Arc;
 
 use crate::board::{Bitboard, Action};
-use crate::search::{MovePicker, PickConstraint};
+use crate::evaluation::BoardEvaluator;
+use crate::search::{Engine, PickConstraint, Searchable};
 
 // convert this to lifetimes later...
 enum Command {
@@ -76,16 +78,17 @@ impl Command {
 // have command history as well maybe
 struct State {
     board: Bitboard,
-    move_picker: MovePicker,
+    engine: Engine<Bitboard>,
     action_history: Vec<Action>,
 }
 
 impl default::Default for State {
     fn default() -> State {
         let board = Bitboard::new();
-        let move_picker = MovePicker::default();
+        let evaluator = Arc::new(BoardEvaluator::default());
+        let engine = Engine::new(evaluator);
         let action_history = Vec::new();
-        State { board, move_picker, action_history }
+        State { board, engine, action_history }
     }
 }
 
@@ -124,8 +127,8 @@ impl State {
     fn validate_action(&self, action: &Action) {
         let validate = self.board.validate_action(&action);
         match validate {
-            Ok(()) => println!("\ntrue"),
-            Err(err) => println!("\nfalse: {}", err),
+            Ok(()) => println!("\nOk"),
+            Err(err) => println!("\nError: {}", err),
         }
     }
 
@@ -160,8 +163,8 @@ impl State {
 
     #[inline]
     fn pick_action(&self, constraint: &PickConstraint) {
-        //let action = self.move_picker.pick(&self.board, &PickConstraint::None);
-        let action = self.move_picker.pick(&self.board, constraint);
+        //let action = self.engine.pick(&self.board, &PickConstraint::None);
+        let action = self.engine.pick(&self.board, constraint);
 
         match action {
             Some(a) => println!("\n{}", a),
@@ -171,7 +174,7 @@ impl State {
 
     #[inline]
     fn evaluate_board(&self, constraint: &PickConstraint) {
-        println!("\n{}", self.move_picker.evaluate_board(&self.board, constraint));
+        println!("\n{}", self.engine.evaluate_state(&self.board, constraint));
     }
 
     #[inline]
