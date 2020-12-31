@@ -28,22 +28,22 @@ impl<S: Searchable> Engine<S> {
     }
 
     #[inline]
-    pub fn pick(&self, state: &S, constraint: &PickConstraint) -> Option<S::Action> {
+    pub fn pick(&self, state: &S, constraint: &SearchConstraint) -> Option<S::Action> {
         Some(self.search(&state, &constraint).get(0)?.action())
     }
 
     #[inline]
-    pub fn evaluate_action(&self, state: &S, action: &S::Action, constraint: &PickConstraint) -> f32 {
+    pub fn evaluate_action(&self, state: &S, action: &S::Action, constraint: &SearchConstraint) -> f32 {
         let state_p = state.take_action(&action).unwrap();
         self.evaluate_state(&state_p, &constraint)
     }
 
     #[inline]
-    pub fn evaluate_state(&self, state: &S, constraint: &PickConstraint) -> f32 {
+    pub fn evaluate_state(&self, state: &S, constraint: &SearchConstraint) -> f32 {
         self.search(&state, &constraint).get(0).unwrap().score()
     }
 
-    pub fn search(&self, state: &S, constraint: &PickConstraint) -> Vec<ActionScorePair<S>> {
+    pub fn search(&self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
         let me = self.clone();
         let state = state.clone();
 
@@ -71,9 +71,9 @@ impl<S: Searchable> Engine<S> {
 
         match constraint {
             // have iterative deepening for None as well..
-            PickConstraint::None => compute_at_depth(17),
-            PickConstraint::Depth(dep) => compute_at_depth(*dep),
-            PickConstraint::Time(dur) => self.iddfs_helper(compute_at_depth, *dur, None),
+            SearchConstraint::None => compute_at_depth(17),
+            SearchConstraint::Depth(dep) => compute_at_depth(*dep),
+            SearchConstraint::Time(dur) => self.iddfs_helper(compute_at_depth, *dur, None),
         }
     }
 
@@ -203,28 +203,28 @@ impl<S: Searchable> ActionScorePair<S> {
     }
 }
 
-pub enum PickConstraint {
+pub enum SearchConstraint {
     Depth(u32),
     Time(Duration),
     None,
 }
 
-impl PickConstraint {
+impl SearchConstraint {
     pub fn depth(d: u32) -> Result<Self, &'static str> {
         if d > MAX_DEPTH {
             return Err("Depth too large! Pick lower than 25");
         }
-        Ok(PickConstraint::Depth(d))
+        Ok(SearchConstraint::Depth(d))
     }
 
     pub fn time(t: u32) -> Result<Self, &'static str> {
         if t > MAX_TIME {
             return Err("Time to large! Pick lower than 300 seconds")
         }
-        Ok(PickConstraint::Time(Duration::from_millis(t.into())))
+        Ok(SearchConstraint::Time(Duration::from_millis(t.into())))
     }
 
     pub fn none() -> Self {
-        PickConstraint::None
+        SearchConstraint::None
     }
 }

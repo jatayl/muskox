@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use crate::board::{Bitboard, Action};
 use crate::evaluation::BoardEvaluator;
-use crate::search::{Engine, PickConstraint, Searchable};
+use crate::search::{Engine, SearchConstraint, Searchable};
+use crate::error::ParseCommandError;
 
 // convert this to lifetimes later...
 enum Command {
@@ -15,8 +16,8 @@ enum Command {
     ValidateAction(Action),
     TakeAction(Action),
     GenerateAllActions,
-    PickAction(PickConstraint),
-    EvaluateBoard(PickConstraint),
+    PickAction(SearchConstraint),
+    EvaluateBoard(SearchConstraint),
     GetTurn,
     Print,
     GetMoveHistory,
@@ -25,44 +26,58 @@ enum Command {
 }
 use Command::*;
 
+// this module is so poorly written its not even funny! check other files for better, more interesting code :)
+
 impl Command {
     fn parse(command: &str) -> Result<Command, Box<dyn error::Error>> {
-        // so unsafe hahaha
+        // this parser is supposed to do the error handling of commands strings
+        // so that the other part of this module does not have to
 
         let command_split: Vec<_> = command.split(" ").collect();
 
         // might want different assert size based on the command.
-        // there could be really useful macros here.
 
         // match a command string to the abstract command object
-        // this parser deal does the error handling
-        match command_split[0] {
+        match *command_split.get(0).ok_or(ParseCommandError::NoCommandError)? {
             "fen" => {
-                let fen_sring = command_split.get(1).unwrap();
+                let fen_sring = command_split.get(1)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "fen string".to_string() })?;
                 let board = Bitboard::new_from_fen(&fen_sring)?;
                 Ok(SetFen(board))
             },
             "gamestate" => Ok(GetGameState),
             "validate" => {
-                let action = Action::new_from_movetext(command_split.get(1).unwrap())?;
+                let action = Action::new_from_movetext(command_split.get(1)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
                 Ok(ValidateAction(action))
             },
             "take" => {
-                let action = Action::new_from_movetext(command_split.get(1).unwrap())?;
+                let action = Action::new_from_movetext(command_split.get(1)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
                 Ok(TakeAction(action))
             }
             "generate" => Ok(GenerateAllActions),
             "best" => Ok(PickAction(match command_split.get(1) {
-                Some(&"depth") => PickConstraint::depth(command_split[2].parse::<u32>()?)?,
-                Some(&"timed") => PickConstraint::time(command_split[2].parse::<u32>()?)?,
-                Some(_) => panic!("bad bad bad!"),
-                None => PickConstraint::None,
+                Some(&"depth") => SearchConstraint::depth(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(&"timed") => SearchConstraint::time(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(bad_option) =>
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                None => SearchConstraint::None,
             })),
             "evaluate" => Ok(EvaluateBoard(match command_split.get(1) {
-                Some(&"depth") => PickConstraint::depth(command_split[2].parse::<u32>()?)?,
-                Some(&"timed") => PickConstraint::time(command_split[2].parse::<u32>()?)?,
-                Some(_) => panic!("bad bad bad!"),
-                None => PickConstraint::None,
+                 Some(&"depth") => SearchConstraint::depth(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(&"timed") => SearchConstraint::time(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(bad_option) =>
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                None => SearchConstraint::None,
             })),
             "turn" => Ok(GetTurn),
             "print" => Ok(Print),
@@ -132,7 +147,6 @@ impl State {
         }
     }
 
-    #[inline]
     fn generate_all_actions(&self) {
         let mut out = String::new();
         let all_action_pairs = self.board.generate_all_actions();
@@ -162,8 +176,8 @@ impl State {
     }
 
     #[inline]
-    fn pick_action(&self, constraint: &PickConstraint) {
-        //let action = self.engine.pick(&self.board, &PickConstraint::None);
+    fn pick_action(&self, constraint: &SearchConstraint) {
+        //let action = self.engine.pick(&self.board, &SearchConstraint::None);
         let action = self.engine.pick(&self.board, constraint);
 
         match action {
@@ -173,7 +187,7 @@ impl State {
     }
 
     #[inline]
-    fn evaluate_board(&self, constraint: &PickConstraint) {
+    fn evaluate_board(&self, constraint: &SearchConstraint) {
         println!("\n{}", self.engine.evaluate_state(&self.board, constraint));
     }
 
@@ -234,7 +248,7 @@ pub fn run() -> ! {
         let _ = io::stdout().flush();
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        io::stdin().read_line(&mut input).expect("Error with your standard input!");
         let input = input.trim();
 
         let command = Command::parse(&input);

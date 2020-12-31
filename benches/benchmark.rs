@@ -3,7 +3,7 @@ use std::sync::Arc;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use muskox::board::{Bitboard, BoardEvaluator};
-use muskox::search::{MovePicker, PickConstraint};
+use muskox::search::{Engine, SearchConstraint};
 
 static BOARDS_FENS: [&'static str; 4] = [
     "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12",
@@ -14,13 +14,13 @@ static BOARDS_FENS: [&'static str; 4] = [
 
 pub fn movepick_benchmarker(c: &mut Criterion) {
     let evaluator = Arc::new(BoardEvaluator::default());
-    let movepicker = MovePicker::new(evaluator);
-    let constraint = PickConstraint::none();
+    let engine = Engine::new(evaluator);
+    let constraint = SearchConstraint::none();
 
-    let mut group = c.benchmark_group("movepicker");
+    let mut group = c.benchmark_group("engine");
     for (i, board) in BOARDS_FENS.iter().map(|s| Bitboard::new_from_fen(s).unwrap()).enumerate() {
         group.bench_with_input(i.to_string(), &board, |b, &board| {
-            b.iter(|| movepicker.search(&board, &constraint));
+            b.iter(|| engine.search(&board, &constraint));
         });
     }
 }

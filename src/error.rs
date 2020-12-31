@@ -43,3 +43,15 @@ pub enum ParseActionError {
     #[snafu(display("Position {} is invalid", position))]
     PositionValueError { position: String },
 }
+
+#[derive(Debug, Snafu)]
+pub enum ParseCommandError {
+    #[snafu(display("No command supplied!"))]
+    NoCommandError,
+
+    #[snafu(display("Invalid constraint option: {}!", option))]
+    ConstraintOptionError { option: String },
+
+    #[snafu(display("Expected parameter for {}!", parameter))]
+    ExpectedParameterError { parameter: String },
+}

@@ -8,7 +8,7 @@ To build and run the binary, execute the following command in the terminal.
 
 `$ cargo run --release`
 
-This will yield another command line. Note that currently the command line interaction is unsafe and will fail ungracefully if an invalid command is inputted. This is due to my lack of time invested into error management for the command line interaction. It isn't a proble  if you type a valid command in though! There are several important commands that one can use to interact with the chess engine. Try the following.
+This will yield another command line. There are several important commands that one can use to interact with the chess engine. Try the following.
 
 `[0]: print`
 
@@ -70,12 +70,14 @@ Each action can be represented by a 32 bit integer. The usage breakdown is as fo
 * 5 bits: source position
 * 5 bits: destination position
 * 5 bits: jump length. how many jumps are made (if any)
-* 8 * 2 = 16 bits: jump directions (if any). there are four possible directions for each jump (TL, TR, BL, BR). Can store up to four different jumps
+* 8 * 2 = 16 bits: jump directions (if any). there are four possible directions for each jump (up left, up right, down left, down right). Can store up to eight different jumps
 * 1 bit: unused
 
 ### Search Algorithm
 
 The search algorith uses standard minmax with alpha beta pruning. Additionally, for the timed searched, iterative deepening depth first search is used to compute at different depths until we reach the time threshold. Currently, the search uses a single thread. I plan on sharding the search problem into subprograms of depth `d-1` and enable multiple threads to tackle each of the subproblems.
+
+The game tree search engine is actually generalized to be able to run on any game you design. You simply need to fully implement the `Searchable` and `Evaluator` traits in the `search` submodule to create and use the engine.
 
 ### Transposition Table
 
