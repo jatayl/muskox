@@ -3,7 +3,7 @@ use std::sync::Arc;
 use criterion::{criterion_group, criterion_main, Criterion};
 
 use muskox::board::{Bitboard, BoardEvaluator};
-use muskox::search::{Engine, SearchConstraint};
+use muskox::search::{Engine, SearchConstraint, Searchable};
 
 static BOARDS_FENS: [&'static str; 4] = [
     "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12",

@@ -49,13 +49,13 @@ impl<S: Searchable> Engine<S> {
 
         let compute_at_depth = move |d| {
             let action_states = state.generate_all_actions();
-            let actions: Vec<_> = action_states.iter().map(|a| a.action()).collect();
-            let evals: Vec<_> = actions.iter()
-                .map(|a| state.take_action(&a).unwrap())
+            let evals: Vec<_> = action_states.iter()
+                .map(|a| a.state())
                 .map(|b| me.minmax_helper(&b, d, f32::NEG_INFINITY, f32::INFINITY))
                 .map(|f| OrderedFloat(f))
                 .collect();
-            let mut out: Vec<_> = actions.iter()
+            let mut out: Vec<_> = action_states.iter()
+                .map(|p| p.action())
                 .zip(evals.iter())
                 .collect();
             // sort based on the evaluations
@@ -64,14 +64,14 @@ impl<S: Searchable> Engine<S> {
                 Optim::Max => b.1.cmp(a.1),
             });
             out.iter()
-                .map(|(&a, &b)| ActionScorePair {action: *a, score: *b})  // copy all of the values and get rid of ordered float wrapper
+                .map(|(&a, &b)| ActionScorePair {action: a, score: *b})  // copy all of the values and get rid of ordered float wrapper
                 .take(5) // only take the top fives moves.
                 .collect()
         };
 
         match constraint {
             // have iterative deepening for None as well..
-            SearchConstraint::None => compute_at_depth(17),
+            SearchConstraint::None => compute_at_depth(13),
             SearchConstraint::Depth(dep) => compute_at_depth(*dep),
             SearchConstraint::Time(dur) => self.iddfs_helper(compute_at_depth, *dur, None),
         }
@@ -97,11 +97,7 @@ impl<S: Searchable> Engine<S> {
             return value;
         }
 
-        if let GameState::Completed(_) = state.get_game_state() {
-            return self.evaluator.eval(&state);
-        }
-        // ideally merge this above when we figure out why it wont work
-        if depth == 0 {
+        if (depth == 0) | (state.get_game_state() != GameState::InProgress) {
             return self.evaluator.eval(&state);
         }
 

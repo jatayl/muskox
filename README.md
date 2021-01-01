@@ -56,7 +56,7 @@ To run benchmarks, execute the following command
 
 ## Overview of underlying implementation
 
-### Checkers board architechture
+### Checkers board architecture
 
 The checkers boards are internally represented using Bitboards. This makes the implementation harder to understand but execution much faster.
 * Blacks: 32 bit integer mask that represents all of the black positions. the i'th bit indicates the precence of black on the i'th square
