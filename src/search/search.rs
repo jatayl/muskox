@@ -9,7 +9,7 @@ pub enum Optim {
 
 pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Send + Sync {
     type Action: Send + Copy;
-    type Side: Side + Debug + PartialEq;
+    type Side: Side;
 
     fn generate_all_actions(&self) -> Vec<ActionStatePair<Self>>;
     fn take_action(&self, _: &Self::Action) -> Result<Self, error::ActionError>;
@@ -72,6 +72,6 @@ impl<S: Searchable> fmt::Display for GameState<S> {
     }
 }
 
-pub trait Side: Debug {
+pub trait Side: Debug + PartialEq {
     fn optim(&self) -> Optim;
 }

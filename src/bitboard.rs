@@ -9,10 +9,10 @@ type Mask = u32;
 
 // these values need rigorous testing to ensure they are right
 // many problems have arisen from these.
-static MASK_L3: Mask = 0x07070707;
-static MASK_L5: Mask = 0xe0e0e0e0;
-static MASK_R3: Mask = 0xe0e0e0e0;
-static MASK_R5: Mask = 0x07070707;
+const MASK_L3: Mask = 0x07070707;
+const MASK_L5: Mask = 0xe0e0e0e0;
+const MASK_R3: Mask = 0xe0e0e0e0;
+const MASK_R5: Mask = 0x07070707;
 
 // maybe want to consider making a piece enum so we can abstract the king
 
@@ -763,14 +763,14 @@ impl Searchable for Bitboard {
 mod tests {
     use super::*;
 
-    static DEFAULT_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
-    static TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
-    static TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
-    static TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
-    static TEST_BOARD_4: &'static str = "B:WK11,3:B";
-    static TEST_BOARD_5: &'static str = "W:B:W";
-    static TEST_BOARD_6: &'static str = "W:B11:W6";
-    static TEST_BOARD_7: &'static str = "B:W11,18,26,27:B8";
+    const DEFAULT_BOARD: &'static str = "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
+    const TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
+    const TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
+    const TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
+    const TEST_BOARD_4: &'static str = "B:WK11,3:B";
+    const TEST_BOARD_5: &'static str = "W:B:W";
+    const TEST_BOARD_6: &'static str = "W:B11:W6";
+    const TEST_BOARD_7: &'static str = "B:W11,18,26,27:B8";
 
     #[test]
     fn new_from_fen_test() {

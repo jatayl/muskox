@@ -38,7 +38,7 @@ This will return a signed number that scores the board. The higher the number th
 
 You have now learned the most important commands to interact with muskox! Below are some supplementary commands that are also useful.
 
-* `fen STRING`: load a checker board state from a FEN string. Read more about formatting [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
+* `fen STRING`: load a checker board state from a FEN string. Omit the string to get the current position as a FEN string. Read more about formatting [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
 * `gamestate`: retrieves the current state of the game. Will state a winner/draw or will print that the game is in progress
 * `turn`: print the color of the player of the current turn
 * `reset`: resets the checkers board to default position

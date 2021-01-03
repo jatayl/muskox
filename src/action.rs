@@ -311,10 +311,10 @@ impl fmt::Debug for Action {
 mod tests {
     use super::*;
 
-    static TEST_MOVE_1: &'static str = "1-10-17";
-    static TEST_MOVE_2: &'static str = "1-6";
-    static TEST_MOVE_3: &'static str = "10-19-12-3";
-    static TEST_MOVE_4: &'static str = "15-11";
+    const TEST_MOVE_1: &'static str = "1-10-17";
+    const TEST_MOVE_2: &'static str = "1-6";
+    const TEST_MOVE_3: &'static str = "10-19-12-3";
+    const TEST_MOVE_4: &'static str = "15-11";
 
     #[test]
     fn relative_position_test() {

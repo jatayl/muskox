@@ -8,9 +8,9 @@ use ordered_float::OrderedFloat;
 
 use crate::search::{TranspositionTable, Searchable, Evaluator, Optim, Side, GameState};
 
-static MAX_DEPTH: u32 = 25;
-static MAX_TIME: u32 = 300000;
-static NUM_THREADS: usize = 8;
+const MAX_DEPTH: u32 = 25;
+const MAX_TIME: u32 = 300000;
+const NUM_THREADS: usize = 8;
 
 #[derive(Clone)]
 pub struct Engine<S: Searchable> {
@@ -27,22 +27,6 @@ impl<S: Searchable> Engine<S> {
         Engine { evaluator, tt, pool }
     }
 
-    #[inline]
-    pub fn pick(&self, state: &S, constraint: &SearchConstraint) -> Option<S::Action> {
-        Some(self.search(&state, &constraint).get(0)?.action())
-    }
-
-    #[inline]
-    pub fn evaluate_action(&self, state: &S, action: &S::Action, constraint: &SearchConstraint) -> f32 {
-        let state_p = state.take_action(&action).unwrap();
-        self.evaluate_state(&state_p, &constraint)
-    }
-
-    #[inline]
-    pub fn evaluate_state(&self, state: &S, constraint: &SearchConstraint) -> f32 {
-        self.search(&state, &constraint).get(0).unwrap().score()
-    }
-
     pub fn search(&self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
         let me = self.clone();
         let state = state.clone();
@@ -50,8 +34,8 @@ impl<S: Searchable> Engine<S> {
         let compute_at_depth = move |d| {
             let action_states = state.generate_all_actions();
             let evals: Vec<_> = action_states.iter()
-                .map(|a| a.state())
-                .map(|b| me.minmax_helper(&b, d, f32::NEG_INFINITY, f32::INFINITY))
+                .map(|p| p.state())
+                .map(|s| me.minmax_helper(&s, d, f32::NEG_INFINITY, f32::INFINITY))
                 .map(|f| OrderedFloat(f))
                 .collect();
             let mut out: Vec<_> = action_states.iter()
@@ -64,8 +48,8 @@ impl<S: Searchable> Engine<S> {
                 Optim::Max => b.1.cmp(a.1),
             });
             out.iter()
-                .map(|(&a, &b)| ActionScorePair {action: a, score: *b})  // copy all of the values and get rid of ordered float wrapper
-                .take(5) // only take the top fives moves.
+                .map(|(&a, &s)| ActionScorePair {action: a, score: *s})  // copy all of the values and get rid of ordered float wrapper
+                // .take(5) // only take the top fives moves.
                 .collect()
         };
 
@@ -109,7 +93,7 @@ impl<S: Searchable> Engine<S> {
                 for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
                     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
-                    alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(eval));
+                    alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(max_eval));
                     if beta <= alpha {
                         break;
                     }
@@ -124,7 +108,7 @@ impl<S: Searchable> Engine<S> {
                 for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
                     min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
-                    beta = *cmp::min(OrderedFloat(beta), OrderedFloat(eval));
+                    beta = *cmp::min(OrderedFloat(beta), OrderedFloat(min_eval));
                     if beta <= alpha {
                         break
                     }
@@ -133,6 +117,23 @@ impl<S: Searchable> Engine<S> {
                 min_eval
             },
         };
+
+        // POTENTIAL NEGAMAX IMPLEMENTATION
+        // check out: https://stackoverflow.com/questions/41182117/modify-minimax-to-alpha-beta-pruning-pseudo-code
+        // currently performance is problematically inconsistent
+
+        // let mut max_eval = f32::NEG_INFINITY;
+
+        // for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
+        //     let eval = -self.minmax_helper(&state_p, depth - 1, -beta, -alpha);
+        //     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
+        //     if max_eval >= beta {
+        //         return max_eval;
+        //     }
+        //     if max_eval > alpha {
+        //         alpha = max_eval;
+        //     }
+        // }
 
         self.tt.save(&state, depth, eval);
 
@@ -189,12 +190,12 @@ pub struct ActionScorePair<S: Searchable> {
 
 impl<S: Searchable> ActionScorePair<S> {
     #[inline]
-    fn action(&self) -> S::Action {
+    pub fn action(&self) -> S::Action {
         self.action
     }
 
     #[inline]
-    fn score(&self) -> f32 {
+    pub fn score(&self) -> f32 {
         self.score
     }
 }

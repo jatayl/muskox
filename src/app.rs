@@ -12,10 +12,12 @@ use crate::error::ParseCommandError;
 // convert this to lifetimes later...
 enum Command {
     SetFen(Bitboard),
+    PrintFen,
     GetGameState,
     ValidateAction(Action),
     TakeAction(Action),
     GenerateAllActions,
+    Search(SearchConstraint),
     PickAction(SearchConstraint),
     EvaluateBoard(SearchConstraint),
     GetTurn,
@@ -40,10 +42,13 @@ impl Command {
         // match a command string to the abstract command object
         match *command_split.get(0).ok_or(ParseCommandError::NoCommandError)? {
             "fen" => {
-                let fen_sring = command_split.get(1)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "fen string".to_string() })?;
-                let board = Bitboard::new_from_fen(&fen_sring)?;
-                Ok(SetFen(board))
+                match command_split.get(1) {
+                    Some(fen_string) => {
+                        let board = Bitboard::new_from_fen(&fen_string)?;
+                        Ok(SetFen(board))
+                    },
+                    None => Ok(PrintFen),
+                }
             },
             "gamestate" => Ok(GetGameState),
             "validate" => {
@@ -57,6 +62,17 @@ impl Command {
                 Ok(TakeAction(action))
             }
             "generate" => Ok(GenerateAllActions),
+            "search" => Ok(Search(match command_split.get(1) {
+                Some(&"depth") => SearchConstraint::depth(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(&"timed") => SearchConstraint::time(command_split.get(2)
+                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
+                    .parse::<u32>()?)?,
+                Some(bad_option) =>
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                None => SearchConstraint::None,
+            })),
             "best" => Ok(PickAction(match command_split.get(1) {
                 Some(&"depth") => SearchConstraint::depth(command_split.get(2)
                     .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
@@ -112,11 +128,13 @@ impl State {
         // match an abstract command to the function
         match command {
             SetFen(board) => self.set_board(board),
+            PrintFen => self.print_fen(),
             GetGameState => self.get_game_state(),
             ValidateAction(action) => self.validate_action(action),
             TakeAction(action) => self.take_action(action),
             GenerateAllActions => self.generate_all_actions(),
             GetTurn => self.get_turn(),
+            Search(constraint) => self.search(constraint),
             PickAction(constraint) => self.pick_action(constraint),
             EvaluateBoard(constraint) => self.evaluate_board(constraint),
             Print => self.print(),
@@ -130,6 +148,11 @@ impl State {
     fn set_board(&mut self, board: &Bitboard) {
         self.board = *board;
         self.action_history = Vec::new();
+    }
+
+    #[inline]
+    fn print_fen(&self) {
+        println!("\n{}", self.board.fen());
     }
 
     #[inline]
@@ -153,6 +176,7 @@ impl State {
 
         if all_action_pairs.len() == 0 {
             println!("\nno valid actions");
+            return;
         }
 
         all_action_pairs.iter()
@@ -175,20 +199,41 @@ impl State {
         println!("\n{:?}", self.board.turn());
     }
 
+    fn search(&self, constraint: &SearchConstraint) {
+        let mut out = String::new();
+
+        let search = self.engine.search(&self.board, constraint);
+
+        if search.len() == 0 {
+            println!("\nno valid actions");
+            return;
+        }
+
+        for pair in search {
+            out.push_str(&format!("{} ({}), ", pair.action(), pair.score()));
+        }
+
+        // unneeded extra ', '
+        out.pop();
+        out.pop();
+
+        println!("\n{}", out);
+    }
+
     #[inline]
     fn pick_action(&self, constraint: &SearchConstraint) {
-        //let action = self.engine.pick(&self.board, &SearchConstraint::None);
-        let action = self.engine.pick(&self.board, constraint);
-
-        match action {
-            Some(a) => println!("\n{}", a),
+        match self.engine.search(&self.board, constraint).get(0) {
+            Some(p) => println!("\n{}", p.action()),
             None => println!("no action to take!"),
-        }
+        };
     }
 
     #[inline]
     fn evaluate_board(&self, constraint: &SearchConstraint) {
-        println!("\n{}", self.engine.evaluate_state(&self.board, constraint));
+        match self.engine.search(&self.board, constraint).get(0) {
+            Some(p) => println!("\n{}", p.score()),
+            None => self.get_game_state(), // the game is over
+        }
     }
 
     #[inline]
