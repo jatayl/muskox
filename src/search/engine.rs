@@ -31,11 +31,13 @@ impl<S: Searchable> Engine<S> {
         let me = self.clone();
         let state = state.clone();
 
+        // set the initial zobrist hash
+        let zobrist_hash = state.zobrist_hash();  // this is relatively expensive function to call
+
         let compute_at_depth = move |d| {
             let action_states = state.generate_all_actions();
             let evals: Vec<_> = action_states.iter()
-                .map(|p| p.state())
-                .map(|s| me.minmax_helper(&s, d, f32::NEG_INFINITY, f32::INFINITY))
+                .map(|p| me.minmax_helper(&p.state(), d, f32::NEG_INFINITY, f32::INFINITY, zobrist_hash ^ p.zobrist_diff()))
                 .map(|f| OrderedFloat(f))
                 .collect();
             let mut out: Vec<_> = action_states.iter()
@@ -76,7 +78,7 @@ impl<S: Searchable> Engine<S> {
         }
     }
 
-    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32) -> f32 {
+    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, mut zobrist_hash: u64) -> f32 {
         if let Some(value) = self.tt.probe(&state, depth) {
             return value;
         }
@@ -89,9 +91,9 @@ impl<S: Searchable> Engine<S> {
             Optim::Max => {
                 let mut max_eval = f32::NEG_INFINITY;
 
-                // isolate only the next state...
-                for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
+                for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
+                    zobrist_hash ^= zobrist_diff;
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash);
                     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
                     alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(max_eval));
                     if beta <= alpha {
@@ -105,8 +107,9 @@ impl<S: Searchable> Engine<S> {
             Optim::Min => {
                 let mut min_eval = f32::INFINITY;
 
-                for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta);
+                for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
+                    zobrist_hash ^= zobrist_diff;
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash);
                     min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
                     beta = *cmp::min(OrderedFloat(beta), OrderedFloat(min_eval));
                     if beta <= alpha {

@@ -15,16 +15,18 @@ pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Send + Sync {
     fn take_action(&self, _: &Self::Action) -> Result<Self, error::ActionError>;
     fn get_game_state(&self) -> GameState<Self>;
     fn turn(&self) -> Self::Side;
+    fn zobrist_hash(&self) -> u64;
 }
 
 pub struct ActionStatePair<S: Searchable> {
     action: S::Action,
     state: S,
+    zobrist_diff: u64,
 }
 
 impl<S: Searchable> ActionStatePair<S> {
-    pub fn new(action: S::Action, state: S) -> ActionStatePair<S> {
-        ActionStatePair { action, state }
+    pub fn new(action: S::Action, state: S, zobrist_diff: u64) -> ActionStatePair<S> {
+        ActionStatePair { action, state, zobrist_diff }
     }
 
     #[inline]
@@ -35,6 +37,11 @@ impl<S: Searchable> ActionStatePair<S> {
     #[inline]
     pub fn state(&self) -> &S {
         &self.state
+    }
+
+    #[inline]
+    pub fn zobrist_diff(&self) -> &u64 {
+        &self.zobrist_diff
     }
 }
 

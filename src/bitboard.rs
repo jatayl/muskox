@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
 use crate::search::{Searchable, Optim, ActionStatePair, GameState, Winner, Side};
+use crate::zobrist;
 
 type Mask = u32;
 
@@ -549,20 +550,33 @@ impl Searchable for Bitboard {
 
                     let move_candidates = self.next_position_possibilities(mover as u8, &action_type);
 
+                    let starts_as_king = self.is_king(mover as u8);
+
                     for candidate in move_candidates {
                         let mut action = base_action.clone();
                         action.push(candidate);
                         let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
                         let action = Action::new_from_vector(action).unwrap();
 
+                        let ends_as_king = {
+                            let dest_row = candidate / 4;
+                            // will be a king if it was a king or will be in end row last
+                            starts_as_king || dest_row == 0 || dest_row == 7
+                        };
+
                         let mut board_p = self.clone();
-                        
+
                         // apply move on pieces
-                        board_p.add_piece(candidate, &self.turn, self.is_king(mover as u8));
+                        board_p.add_piece(candidate, &self.turn, ends_as_king);
                         board_p.remove_piece(mover as u8);
                         board_p.turn = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
 
-                        actions.push(ActionStatePair::new(action, board_p));
+                        // find the zobrist hash of this action
+                        let mut zobrist_hash = zobrist::get_position_hash(mover, self.turn, starts_as_king);
+                        zobrist_hash ^= zobrist::get_position_hash(candidate as u32, self.turn, ends_as_king);
+                        zobrist_hash ^= zobrist::get_turn_hash();
+
+                        actions.push(ActionStatePair::new(action, board_p, zobrist_hash));
                     }
                 }
             },
@@ -578,10 +592,10 @@ impl Searchable for Bitboard {
 
                     let base_action = vec![position as u8];
 
-                    boards_in_progress.push_back((self.clone(), base_action));
+                    boards_in_progress.push_back((self.clone(), base_action, 0));
                 }
 
-                while let Some((board, base_action)) = boards_in_progress.pop_front() {
+                while let Some((board, base_action, mut zobrist_hash)) = boards_in_progress.pop_front() {
                     // can only pop the piece that has been jumping [last element in action]
                     let &jumper = base_action.last().unwrap();
 
@@ -595,6 +609,8 @@ impl Searchable for Bitboard {
 
                         let direction = Direction::between(jumper, candidate).unwrap();
 
+                        let skipped_over = direction.relative_to(jumper).unwrap();
+
                         let starts_as_king = board.is_king(jumper);
 
                         let ends_as_king = {
@@ -607,16 +623,26 @@ impl Searchable for Bitboard {
                         let mut board_p = board.clone();
                         board_p.add_piece(candidate, &board.turn, ends_as_king);
                         board_p.remove_piece(jumper);
-                        board_p.remove_piece(direction.relative_to(jumper).unwrap());
+                        board_p.remove_piece(skipped_over);
                         board_p.turn = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+
+                        // make the zobrist hash
+                        zobrist_hash ^= zobrist::get_position_hash(jumper as u32, board.turn, starts_as_king);
+                        zobrist_hash ^= zobrist::get_position_hash(candidate as u32, board.turn, ends_as_king);
+                        // use board_p.turn below it is set to next turn
+                        zobrist_hash ^= zobrist::get_position_hash(skipped_over as u32, board_p.turn, board.is_king(skipped_over));
+
 
                         // check if we cannot jump anymore
                         if (board_p.get_jumpers(&board.turn) & (1 << candidate) == 0) | (!starts_as_king & ends_as_king) {
-                            actions.push(ActionStatePair::new(action, board_p));
+                            // finally add the turn hash when it is over
+                            zobrist_hash ^= zobrist::get_turn_hash();
+
+                            actions.push(ActionStatePair::new(action, board_p, zobrist_hash));
                             continue;
                         }
                         // other wise put it in the deque
-                        boards_in_progress.push_back((board_p, action_vec));
+                        boards_in_progress.push_back((board_p, action_vec, zobrist_hash));
                     }
                 }
             },
@@ -756,6 +782,40 @@ impl Searchable for Bitboard {
     fn turn(&self) -> Color {
         self.turn
     }
+
+    fn zobrist_hash(&self) -> u64 {
+        // returns the next piece to check moves for
+        let pop_piece = |mask: &mut Mask, color: &Color| {
+            let position = match *color {
+                White => mask.trailing_zeros(),
+                Black => (0x80000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+            };
+            *mask ^= 1 << position;
+            position
+        };
+
+        let mut zobrist_hash = 0;
+
+        let mut blacks_iter = self.blacks;
+        let mut whites_iter = self.whites;
+
+        while blacks_iter != 0 {
+            let position = pop_piece(&mut blacks_iter, &Black);
+            zobrist_hash ^= zobrist::get_position_hash(position, Black, self.is_king(position as u8));
+        }
+
+        while whites_iter != 0 {
+            let position = pop_piece(&mut whites_iter, &White);
+            zobrist_hash ^= zobrist::get_position_hash(position, White, self.is_king(position as u8));
+        }
+
+        // if it is white then start it off with the turn hash
+        if self.turn == Color::White {
+            zobrist_hash ^= zobrist::get_turn_hash()
+        }
+
+        zobrist_hash
+    }
 }
 
 
@@ -859,7 +919,7 @@ mod tests {
         assert_eq!(board.get_jumpers(&Black), 0x80204000);
 
         let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        assert_eq!(board.get_jumpers(&Black), 0x401000c0);  // this one is failing
+        assert_eq!(board.get_jumpers(&Black), 0x401000c0);
     }
 
     #[test]
@@ -982,5 +1042,27 @@ mod tests {
         assert_eq!(board_p.blacks, 0x40000000);
         assert_eq!(board_p.whites, 0x04000000);
         assert_eq!(board_p.kings, 0x40000000);
+    }
+
+    #[test]
+    fn zobrist_hashing_test() {
+        // checks that the zobrist hashing is consistent with 2 different ways of making it
+        let board = Bitboard::new_from_fen(DEFAULT_BOARD).unwrap();
+
+        for action in board.generate_all_actions() {
+            let board_p = action.state();
+            let zobrist_diff = *action.zobrist_diff();
+            let zobrist_hash = board.zobrist_hash() ^ zobrist_diff;
+            assert_eq!(zobrist_hash, board_p.zobrist_hash());
+        }
+
+        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+
+        for action in board.generate_all_actions() {
+            let board_p = action.state();
+            let zobrist_diff = *action.zobrist_diff();
+            let zobrist_hash = board.zobrist_hash() ^ zobrist_diff;
+            assert_eq!(zobrist_hash, board_p.zobrist_hash());
+        }
     }
 }
