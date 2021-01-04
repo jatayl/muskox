@@ -1,42 +1,96 @@
-use std::sync::RwLock;
-
-use hashbrown::HashMap;
+use std::mem;
+use std::default;
+use std::sync::{Arc, RwLock};
 
 use crate::search::Searchable;
 
-// will need way of regulating size
+const OVERWRITE_FLAG: u8 = 255;
+const CLUSTER_SIZE: usize = 3;
 
-struct TTValue {
-    depth: u32,
+#[derive(Clone, Copy)]
+struct TTEntry<S: Searchable> {
+    state: S,
+    depth: u8,
     score: f32,
+    generation: u8,
 }
 
-// maybe use dashmap instead if it is threadsafe...
+impl<S: Searchable> default::Default for TTEntry<S> {
+    fn default() -> Self {
+        TTEntry {
+            state: S::default(),
+            depth: OVERWRITE_FLAG,
+            score: 0.,
+            generation: 0,
+        }
+    }
+}
+
+impl<S: Searchable> TTEntry<S> {
+    fn replace_value(&self, current_generation: u8) -> u8 {
+        // stockfish uses 8 as the multipler
+        self.depth - 4 * (current_generation - self.generation)
+    }
+}
+
+type Cluster<S> = RwLock<[TTEntry<S>; CLUSTER_SIZE]>;
+
+#[derive(Clone)]
 pub struct TranspositionTable<S: Searchable> {
-    data: RwLock<HashMap<S, TTValue>>,
+    clusters: Arc<[Cluster<S>]>,
+    n_clusters: usize,
+    generation: u8,
 }
 
 impl<S: Searchable> TranspositionTable<S> {
-    pub fn new() -> Self {
-        let data = RwLock::new(HashMap::new());
-        TranspositionTable { data }
+    pub fn new(size_mb: usize) -> Self {
+        let size_b = size_mb * 1024 * 1024;
+        let cluster_size = mem::size_of::<Cluster<S>>();
+        let n_clusters = size_b / cluster_size;
+
+        let clusters = (0..n_clusters)
+            .map(|_| RwLock::new([TTEntry::default(); 3]))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        
+        let clusters = Arc::from(clusters);
+
+        let generation = 1;
+
+        TranspositionTable { clusters, n_clusters, generation }
     }
 
-    pub fn save(&self, state: &S, depth: u32, score: f32) {
-        let value = TTValue { depth, score };
-        // copying of the state isnt great but think it is the only thing i can do
-        self.data.write().unwrap().insert(*state, value);
+    pub fn new_search(&mut self) {
+        self.generation += 1;
     }
 
-    pub fn probe(&self, state: &S, depth: u32) -> Option<f32> {
-        let data = self.data.read().unwrap();
-        let value = data.get(&state)?;
+    pub fn save(&self, zobrist_hash: u64, &state: &S, depth: u8, score: f32) {
+        let generation = self.generation;
+        let entry = TTEntry { state, depth, score, generation };
 
-        // if the score was captured too deep then we dont want it
-        if value.depth < depth {
-            return None;
+        let key = zobrist_hash as usize % self.n_clusters;
+        let mut cluster = self.clusters[key].write().unwrap();
+
+        for i in 0..CLUSTER_SIZE {
+            if entry.replace_value(generation) > cluster[i].replace_value(generation) || cluster[i].depth == OVERWRITE_FLAG {
+                cluster[i] = entry;
+                return;
+            }
+        }
+    }
+
+    pub fn probe(&self, zobrist_hash: u64, state: &S, depth: u8) -> Option<f32> {
+        let key = zobrist_hash as usize % self.n_clusters;
+        let cluster = self.clusters[key].read().unwrap();
+
+        // iterate over the cluster
+        for i in 0..CLUSTER_SIZE {
+            if cluster[i].depth >= depth && cluster[i].state == *state {
+                // its a match!
+                return Some(cluster[i].score);
+            }
         }
 
-        Some(value.score)
+        None
     }
 }

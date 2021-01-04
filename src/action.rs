@@ -140,9 +140,9 @@ impl Action {
     /// ```
     /// use muskox::board::Action;
     ///
-    /// let action = Action::new_from_vector(vec![19, 24]).unwrap();
+    /// let action = Action::from_vector(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
-    pub fn new_from_vector(positions: Vec<u8>) -> Result<Self, ParseActionError> {
+    pub fn from_vector(positions: Vec<u8>) -> Result<Self, ParseActionError> {
         // maybe make this method work for all iterators and not just vectors
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
@@ -198,16 +198,16 @@ impl Action {
     /// ```
     /// use muskox::board::Action;
     ///
-    /// let action = Action::new_from_movetext("19-24").unwrap();
+    /// let action = Action::from_movetext("19-24").unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     /// ```
-    pub fn new_from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
+    pub fn from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
         let positions: Vec<_> = movetext.split("-")
             .map(|x| x.parse::<u8>()
                 .or(Err(ParseActionError::PositionValueError { position: x.to_string() })))
             .collect::<Result<_, ParseActionError>>()?;
 
-        Action::new_from_vector(positions)
+        Action::from_vector(positions)
     }
 
     /// Returns the starting location of a particular action
@@ -342,19 +342,19 @@ mod tests {
 
     #[test]
     fn action_overview_test() {
-        let action = Action::new_from_movetext(TEST_MOVE_1).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_1).unwrap();
         assert_eq!(action.source(), 0);
         assert_eq!(action.destination(), 16);
         assert_eq!(action.jump_len(), 2);
         assert_eq!(action.action_type(), ActionType::Jump);
 
-        let action = Action::new_from_movetext(TEST_MOVE_2).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_2).unwrap();
         assert_eq!(action.source(), 0);
         assert_eq!(action.destination(), 5);
         assert_eq!(action.jump_len(), 0);
         assert_eq!(action.action_type(), ActionType::Move);
 
-        let action = Action::new_from_movetext(TEST_MOVE_3).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_3).unwrap();
         assert_eq!(action.source(), 9);
         assert_eq!(action.destination(), 2);
         assert_eq!(action.jump_len(), 3);
@@ -363,15 +363,15 @@ mod tests {
 
     #[test]
     fn direction_test() {
-        let action = Action::new_from_movetext(TEST_MOVE_1).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_1).unwrap();
         assert_eq!(action.jump_direction(0), Some(Direction::DownRight));
         assert_eq!(action.jump_direction(1), Some(Direction::DownLeft));
         assert_eq!(action.jump_direction(2), None);
 
-        let action = Action::new_from_movetext(TEST_MOVE_2).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_2).unwrap();
         assert_eq!(action.jump_direction(0), None);
 
-        let action = Action::new_from_movetext(TEST_MOVE_3).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_3).unwrap();
         assert_eq!(action.jump_direction(1), Some(Direction::UpRight));
         assert_eq!(action.jump_direction(2), Some(Direction::UpLeft));
         assert_eq!(action.jump_direction(4), None);
@@ -379,13 +379,13 @@ mod tests {
 
     #[test]
     fn move_direction_test() {
-        let action = Action::new_from_movetext(TEST_MOVE_1).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_1).unwrap();
         assert_eq!(action.move_direction(), None);
 
-        let action = Action::new_from_movetext(TEST_MOVE_2).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_2).unwrap();
         assert_eq!(action.move_direction(), Some(Direction::DownRight));
 
-        let action = Action::new_from_movetext(TEST_MOVE_4).unwrap();
+        let action = Action::from_movetext(TEST_MOVE_4).unwrap();
         assert_eq!(action.move_direction(), Some(Direction::UpRight));
     }
 }

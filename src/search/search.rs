@@ -7,7 +7,7 @@ pub enum Optim {
     Min,
 }
 
-pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Send + Sync {
+pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Default + Send + Sync {
     type Action: Send + Copy;
     type Side: Side;
 

@@ -1,4 +1,5 @@
 use std::mem;
+use std::default;
 use std::collections::VecDeque;
 
 use crate::board::{Action, ActionType, Direction};
@@ -43,9 +44,9 @@ pub struct Bitboard {
     turn: Color,
 }
 
-impl Bitboard {
+impl default::Default for Bitboard {
     /// Creates a new bitboard in the default, starting position
-    pub fn new() -> Self {
+    fn default() -> Self {
         // initial state for a blank board
         Bitboard {
             blacks: 0x00000fff,
@@ -54,7 +55,9 @@ impl Bitboard {
             turn: Black,
         }
     }
+}
 
+impl Bitboard {
     /// Creates a new bitboard from a string FEN tag according to Portable Draughts Notation.
     /// (PDN). Read more about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
     ///
@@ -68,10 +71,10 @@ impl Bitboard {
     /// ```
     /// use muskox::board::Bitboard;
     ///
-    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
+    /// let board = Bitboard::from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
     /// ```
-    pub fn new_from_fen(fen_string: &str) -> Result<Self, ParseBoardError> {
+    pub fn from_fen(fen_string: &str) -> Result<Self, ParseBoardError> {
         // maybe clean up errors handling here. they are rather rigid could make them more useful
 
         let fen_string: String = fen_string.chars().filter(|c| !c.is_whitespace()).collect();
@@ -147,12 +150,12 @@ impl Bitboard {
     /// use muskox::board::{Bitboard, Action};
     /// use muskox::error::ActionError;
     ///
-    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+    /// let board = Bitboard::from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
     ///
-    /// let action = Action::new_from_movetext("22-17").unwrap();
+    /// let action = Action::from_movetext("22-17").unwrap();
     /// assert_eq!(board.validate_action(&action), Ok(()));
     ///
-    /// let action = Action::new_from_movetext("12-8").unwrap();
+    /// let action = Action::from_movetext("12-8").unwrap();
     /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
     pub fn validate_action(&self, action: &Action) -> Result<(), ActionError> {
@@ -168,7 +171,7 @@ impl Bitboard {
     /// ```
     /// use muskox::board::Bitboard;
     ///
-    /// let b = Bitboard::new();
+    /// let b = Bitboard::default();
     /// assert_eq!(b.fen(), "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12");
     /// ```
     pub fn fen(&self) -> String {
@@ -214,7 +217,7 @@ impl Bitboard {
     /// ```
     /// use muskox::board::Bitboard;
     ///
-    /// let board = Bitboard::new();
+    /// let board = Bitboard::default();
     /// println!("{}", board.pretty());
     /// ```
     pub fn pretty(&self) -> String {
@@ -491,7 +494,7 @@ impl Searchable for Bitboard {
     /// use muskox::board::Bitboard;
     /// use muskox::search::{GameState, Searchable};
     ///
-    /// let board = Bitboard::new();
+    /// let board = Bitboard::default();
     /// assert_eq!(board.get_game_state(), GameState::InProgress);
     /// ```
     fn get_game_state(&self) -> GameState<Bitboard> {
@@ -556,7 +559,7 @@ impl Searchable for Bitboard {
                         let mut action = base_action.clone();
                         action.push(candidate);
                         let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
-                        let action = Action::new_from_vector(action).unwrap();
+                        let action = Action::from_vector(action).unwrap();
 
                         let ends_as_king = {
                             let dest_row = candidate / 4;
@@ -605,7 +608,7 @@ impl Searchable for Bitboard {
                     for candidate in jump_candidates {
                         let mut action_vec = base_action.clone();
                         action_vec.push(candidate);
-                        let action = Action::new_from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect()).unwrap();
+                        let action = Action::from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect()).unwrap();
 
                         let direction = Direction::between(jumper, candidate).unwrap();
 
@@ -669,12 +672,12 @@ impl Searchable for Bitboard {
     /// use muskox::search::Searchable;
     /// use muskox::error::ActionError;
     ///
-    /// let board = Bitboard::new_from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
+    /// let board = Bitboard::from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29").unwrap();
     ///
-    /// let action = Action::new_from_movetext("22-17").unwrap();
+    /// let action = Action::from_movetext("22-17").unwrap();
     /// assert_eq!(board.take_action(&action).unwrap().fen(), "W:WK10,K15,18,24,27,28:B12,16,K17,20,K25,K29");
     ///
-    /// let action = Action::new_from_movetext("12-8").unwrap();
+    /// let action = Action::from_movetext("12-8").unwrap();
     /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
     fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
@@ -833,20 +836,20 @@ mod tests {
     const TEST_BOARD_7: &'static str = "B:W11,18,26,27:B8";
 
     #[test]
-    fn new_from_fen_test() {
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+    fn from_fen_test() {
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.blacks, 0x11288800);
         assert_eq!(board.whites, 0x0c824200);
         assert_eq!(board.kings, 0x11204200);
         assert_eq!(board.turn, Black);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
         assert_eq!(board.blacks, 0x81204000);
         assert_eq!(board.whites, 0x26040500);
         assert_eq!(board.kings, 0x82000400);
         assert_eq!(board.turn, White);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_4).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_4).unwrap();
         assert_eq!(board.blacks, 0);
         assert_eq!(board.whites, 0x00000404);
         assert_eq!(board.kings, 0x00000400);
@@ -855,138 +858,138 @@ mod tests {
 
     #[test]
     fn fen_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.fen(), DEFAULT_BOARD);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.fen(), "B:WK10,K15,18,24,27,28:B12,16,20,K22,K25,K29");
     }
 
     #[test]
     fn get_movers_white_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.get_movers(&White), 0x00f00000);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.get_movers(&White), 0x04824200);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
         assert_eq!(board.get_movers(&White), 0x06040500);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_movers(&White), 0x07000000);
     }
 
     #[test]
     fn get_movers_black_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.get_movers(&Black), 0x00000f00);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.get_movers(&Black), 0x01208000);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
         assert_eq!(board.get_movers(&Black), 0x81004000);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_movers(&Black), 0x000600e0);
     }
 
     #[test]
     fn get_jumpers_white_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.get_jumpers(&White), 0);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.get_jumpers(&White), 0);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
         assert_eq!(board.get_jumpers(&White), 0x22040400);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_jumpers(&White), 0x00400404);
     }
 
     #[test]
     fn get_jumpers_black_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.get_jumpers(&Black), 0);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
         assert_eq!(board.get_jumpers(&Black), 0);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
         assert_eq!(board.get_jumpers(&Black), 0x80204000);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_jumpers(&Black), 0x401000c0);
     }
 
     #[test]
     fn get_game_state_test() {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         assert_eq!(board.get_game_state(), GameState::InProgress);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
         assert_eq!(board.get_game_state(), GameState::InProgress);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_4).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_4).unwrap();
         assert_eq!(board.get_game_state(), GameState::Completed(Winner::Player(White)));
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_5).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_5).unwrap();
         assert_eq!(board.get_game_state(), GameState::Completed(Winner::Player(Black)));
     }
 
     #[test]
     fn validate_action_move_test() {
-        let board = Bitboard::new();
-        let action = Action::new_from_movetext("10-14").unwrap();
+        let board = Bitboard::default();
+        let action = Action::from_movetext("10-14").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
-        let action = Action::new_from_movetext("23-18").unwrap();
+        let action = Action::from_movetext("23-18").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::SourceColorError { position: 22, color: Black }));
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        let action = Action::new_from_movetext("16-19").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
+        let action = Action::from_movetext("16-19").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
-        let action = Action::new_from_movetext("22-17").unwrap();
+        let action = Action::from_movetext("22-17").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
-        let action = Action::new_from_movetext("12-8").unwrap();
+        let action = Action::from_movetext("12-8").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
-        let action = Action::new_from_movetext("22-18").unwrap();
+        let action = Action::from_movetext("22-18").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::DestinationEmptyError { destination: 17 }));
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        let action = Action::new_from_movetext("9-6").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::from_movetext("9-6").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::HaveToJumpError));
     }
 
     #[test]
     fn take_action_move_test() {
-        let board = Bitboard::new();
-        let action = Action::new_from_movetext("10-14").unwrap();
+        let board = Bitboard::default();
+        let action = Action::from_movetext("10-14").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.whites, 0xfff00000);
         assert_eq!(board_p.blacks, 0x00002dff);
         assert_eq!(board_p.kings, 0);
         assert_eq!(board_p.turn, White);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_1).unwrap();
-        let action = Action::new_from_movetext("16-19").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
+        let action = Action::from_movetext("16-19").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x112c0800);
         assert_eq!(board_p.whites, 0x0c824200);
         assert_eq!(board_p.kings, 0x11204200);
 
         // king moving backwards
-        let action = Action::new_from_movetext("22-17").unwrap();
+        let action = Action::from_movetext("22-17").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x11098800);
         assert_eq!(board_p.whites, 0x0c824200);
         assert_eq!(board_p.kings, 0x11014200);
         
         // kinging of single piece
-        let board = Bitboard::new_from_fen(TEST_BOARD_6).unwrap();
-        let action = Action::new_from_movetext("6-2").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_6).unwrap();
+        let action = Action::from_movetext("6-2").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x00000400);
         assert_eq!(board_p.whites, 0x00000002);
@@ -997,47 +1000,47 @@ mod tests {
     #[test]
     fn validate_action_jump_test() {
         // need to show failure for jumping over own piece and blank space
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        let action = Action::new_from_movetext("30-21").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::from_movetext("30-21").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
-        let action = Action::new_from_movetext("30-23").unwrap();
+        let action = Action::from_movetext("30-23").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::SkippedPositionError { skipped: 25, color: Black }));
-        let action = Action::new_from_movetext("27-20").unwrap();
+        let action = Action::from_movetext("27-20").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::SkippedPositionError { skipped: 23, color: Black }));
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_7).unwrap();
-        let action = Action::new_from_movetext("8-15-22").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_7).unwrap();
+        let action = Action::from_movetext("8-15-22").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::NeedMoreJumpingError));  // this is wrong
-        let action = Action::new_from_movetext("8-15-22-31").unwrap();
+        let action = Action::from_movetext("8-15-22-31").unwrap();
         assert_eq!(board.validate_action(&action), Ok(()));
-        let action = Action::new_from_movetext("8-15-22-31-24").unwrap();
+        let action = Action::from_movetext("8-15-22-31-24").unwrap();
         assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     }
 
     #[test]
     fn take_action_jump_test() {
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
-        let action = Action::new_from_movetext("11-18").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
+        let action = Action::from_movetext("11-18").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x81200000);
         assert_eq!(board_p.whites, 0x26060100);
         assert_eq!(board_p.kings, 0x82020000);
 
-        let action = Action::new_from_movetext("19-10").unwrap();
+        let action = Action::from_movetext("19-10").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x81200000);
         assert_eq!(board_p.whites, 0x26000700);
         assert_eq!(board_p.kings, 0x82000400);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_3).unwrap();
-        let action = Action::new_from_movetext("21-30").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
+        let action = Action::from_movetext("21-30").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x600600e0);
         assert_eq!(board_p.whites, 0x06400404);
         assert_eq!(board_p.kings, 0x60000004);
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_7).unwrap();
-        let action = Action::new_from_movetext("8-15-22-31").unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_7).unwrap();
+        let action = Action::from_movetext("8-15-22-31").unwrap();
         let board_p = board.take_action(&action).unwrap();
         assert_eq!(board_p.blacks, 0x40000000);
         assert_eq!(board_p.whites, 0x04000000);
@@ -1047,7 +1050,7 @@ mod tests {
     #[test]
     fn zobrist_hashing_test() {
         // checks that the zobrist hashing is consistent with 2 different ways of making it
-        let board = Bitboard::new_from_fen(DEFAULT_BOARD).unwrap();
+        let board = Bitboard::from_fen(DEFAULT_BOARD).unwrap();
 
         for action in board.generate_all_actions() {
             let board_p = action.state();
@@ -1056,7 +1059,7 @@ mod tests {
             assert_eq!(zobrist_hash, board_p.zobrist_hash());
         }
 
-        let board = Bitboard::new_from_fen(TEST_BOARD_2).unwrap();
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
 
         for action in board.generate_all_actions() {
             let board_p = action.state();

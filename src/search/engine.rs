@@ -15,19 +15,21 @@ const NUM_THREADS: usize = 8;
 #[derive(Clone)]
 pub struct Engine<S: Searchable> {
     evaluator: Arc<dyn Evaluator<S>>,
-    tt: Arc<TranspositionTable<S>>,
+    tt: TranspositionTable<S>,
     pool: Arc<ThreadPool>,
 }
 
 impl<S: Searchable> Engine<S> {
     pub fn new(evaluator: Arc<dyn Evaluator<S>>) -> Self {
-        let tt = Arc::new(TranspositionTable::new());
+        let tt = TranspositionTable::new(256);
         let pool = Arc::new(ThreadPoolBuilder::new().num_threads(NUM_THREADS - 1).build().unwrap());
 
         Engine { evaluator, tt, pool }
     }
 
-    pub fn search(&self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
+    pub fn search(&mut self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
+        self.tt.new_search();  // increment the generation
+
         let me = self.clone();
         let state = state.clone();
 
@@ -78,8 +80,8 @@ impl<S: Searchable> Engine<S> {
         }
     }
 
-    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, mut zobrist_hash: u64) -> f32 {
-        if let Some(value) = self.tt.probe(&state, depth) {
+    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, zobrist_hash: u64) -> f32 {
+        if let Some(value) = self.tt.probe(zobrist_hash, &state, depth as u8) {
             return value;
         }
 
@@ -92,8 +94,8 @@ impl<S: Searchable> Engine<S> {
                 let mut max_eval = f32::NEG_INFINITY;
 
                 for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
-                    zobrist_hash ^= zobrist_diff;
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash);
+                    let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
                     alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(max_eval));
                     if beta <= alpha {
@@ -108,8 +110,8 @@ impl<S: Searchable> Engine<S> {
                 let mut min_eval = f32::INFINITY;
 
                 for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
-                    zobrist_hash ^= zobrist_diff;
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash);
+                    let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
+                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
                     beta = *cmp::min(OrderedFloat(beta), OrderedFloat(min_eval));
                     if beta <= alpha {
@@ -138,7 +140,7 @@ impl<S: Searchable> Engine<S> {
         //     }
         // }
 
-        self.tt.save(&state, depth, eval);
+        self.tt.save(zobrist_hash, &state, depth as u8, eval);
 
         eval
     }

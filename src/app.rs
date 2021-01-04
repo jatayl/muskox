@@ -44,7 +44,7 @@ impl Command {
             "fen" => {
                 match command_split.get(1) {
                     Some(fen_string) => {
-                        let board = Bitboard::new_from_fen(&fen_string)?;
+                        let board = Bitboard::from_fen(&fen_string)?;
                         Ok(SetFen(board))
                     },
                     None => Ok(PrintFen),
@@ -52,12 +52,12 @@ impl Command {
             },
             "gamestate" => Ok(GetGameState),
             "validate" => {
-                let action = Action::new_from_movetext(command_split.get(1)
+                let action = Action::from_movetext(command_split.get(1)
                     .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
                 Ok(ValidateAction(action))
             },
             "take" => {
-                let action = Action::new_from_movetext(command_split.get(1)
+                let action = Action::from_movetext(command_split.get(1)
                     .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
                 Ok(TakeAction(action))
             }
@@ -115,7 +115,7 @@ struct State {
 
 impl default::Default for State {
     fn default() -> State {
-        let board = Bitboard::new();
+        let board = Bitboard::default();
         let evaluator = Arc::new(BoardEvaluator::default());
         let engine = Engine::new(evaluator);
         let action_history = Vec::new();
@@ -199,7 +199,7 @@ impl State {
         println!("\n{:?}", self.board.turn());
     }
 
-    fn search(&self, constraint: &SearchConstraint) {
+    fn search(&mut self, constraint: &SearchConstraint) {
         let mut out = String::new();
 
         let search = self.engine.search(&self.board, constraint);
@@ -221,7 +221,7 @@ impl State {
     }
 
     #[inline]
-    fn pick_action(&self, constraint: &SearchConstraint) {
+    fn pick_action(&mut self, constraint: &SearchConstraint) {
         match self.engine.search(&self.board, constraint).get(0) {
             Some(p) => println!("\n{}", p.action()),
             None => println!("no action to take!"),
@@ -229,7 +229,7 @@ impl State {
     }
 
     #[inline]
-    fn evaluate_board(&self, constraint: &SearchConstraint) {
+    fn evaluate_board(&mut self, constraint: &SearchConstraint) {
         match self.engine.search(&self.board, constraint).get(0) {
             Some(p) => println!("\n{}", p.score()),
             None => self.get_game_state(), // the game is over
@@ -276,7 +276,7 @@ impl State {
 
     #[inline]
     fn clear(&mut self) {
-        self.board = Bitboard::new();
+        self.board = Bitboard::default();
         self.action_history = Vec::new();
     }
 }

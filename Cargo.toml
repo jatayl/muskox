@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 snafu = "0.6"
 ordered-float = "2.0"
-hashbrown = "0.9"
 rayon = "1.5"
 lazy_static = "1.4"
 
