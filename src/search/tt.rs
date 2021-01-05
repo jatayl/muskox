@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::search::Searchable;
 
-const OVERWRITE_FLAG: u8 = 255;
+const DEFAULT_FLAG: u8 = 255;
 const CLUSTER_SIZE: usize = 3;
 
 #[derive(Clone, Copy)]
@@ -19,7 +19,7 @@ impl<S: Searchable> default::Default for TTEntry<S> {
     fn default() -> Self {
         TTEntry {
             state: S::default(),
-            depth: OVERWRITE_FLAG,
+            depth: DEFAULT_FLAG,
             score: 0.,
             generation: 0,
         }
@@ -72,11 +72,33 @@ impl<S: Searchable> TranspositionTable<S> {
         let mut cluster = self.clusters[key].write().unwrap();
 
         for i in 0..CLUSTER_SIZE {
-            if entry.replace_value(generation) > cluster[i].replace_value(generation) || cluster[i].depth == OVERWRITE_FLAG {
+            if entry.replace_value(generation) > cluster[i].replace_value(generation)
+                || cluster[i].depth == DEFAULT_FLAG
+            {
                 cluster[i] = entry;
                 return;
             }
         }
+
+        // // The proposed implementation below checks to see if any in cluster are in default state
+        // // before overwriting based on replacement value
+        // // However, it isnt implemented do to performance concerns with two iterations
+
+        // // first iteration checks if any are defaults using the DEFAULT_FLAG
+        // for i in 0..CLUSTER_SIZE {
+        //     if cluster[i].depth == DEFAULT_FLAG {
+        //         cluster[i] = entry;
+        //         return;
+        //     }
+        // }
+
+        // // second one checks replacement value
+        // for i in 0..CLUSTER_SIZE {
+        //     if entry.replace_value(generation) > cluster[i].replace_value(generation) {
+        //         cluster[i] = entry;
+        //         return;
+        //     }
+        // }
     }
 
     pub fn probe(&self, zobrist_hash: u64, state: &S, depth: u8) -> Option<f32> {
@@ -92,5 +114,20 @@ impl<S: Searchable> TranspositionTable<S> {
         }
 
         None
+    }
+
+    pub fn resize(&mut self, size_mb: usize) {
+        let size_b = size_mb * 1024 * 1024;
+        let cluster_size = mem::size_of::<Cluster<S>>();
+        let n_clusters = size_b / cluster_size;
+
+        let clusters = (0..n_clusters)
+            .map(|_| RwLock::new([TTEntry::default(); 3]))
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
+        self.clusters = Arc::from(clusters);
+        self.n_clusters = n_clusters;
+        self.generation = 1;
     }
 }

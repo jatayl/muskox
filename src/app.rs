@@ -278,6 +278,7 @@ impl State {
     fn clear(&mut self) {
         self.board = Bitboard::default();
         self.action_history = Vec::new();
+        self.engine.reset();
     }
 }
 

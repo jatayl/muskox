@@ -1,6 +1,5 @@
 use std::fmt;
 use std::cmp;
-use std::mem;
 
 use crate::error::ParseActionError;
 
@@ -243,8 +242,13 @@ impl Action {
         if i >= self.jump_len() {
             return None
         }
-        let val = (self.0 >> (i * 2 + 15)) & 3;
-        Some(unsafe { mem::transmute(val as u8) })
+        match (self.0 >> (i * 2 + 15)) & 3 {
+            0 => Some(Direction::UpLeft),
+            1 => Some(Direction::UpRight),
+            2 => Some(Direction::DownLeft),
+            3 => Some(Direction::DownRight),
+            _ => None,
+        }
     }
 
     /// Returns the type of a particular action

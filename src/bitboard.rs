@@ -1,11 +1,10 @@
-use std::mem;
 use std::default;
 use std::collections::VecDeque;
 
 use crate::board::{Action, ActionType, Direction};
-use crate::error::{ActionError, ParseBoardError};
 use crate::search::{Searchable, Optim, ActionStatePair, GameState, Winner, Side};
 use crate::zobrist;
+use crate::error::{ActionError, ParseBoardError};
 
 type Mask = u32;
 
@@ -26,7 +25,18 @@ pub enum Color {
 }
 use Color::*;
 
+impl Color {
+    #[inline]
+    fn opponent(&self) -> Color {
+        match self {
+            Black => White,
+            White => Black,
+        }
+    }
+}
+
 impl Side for Color {
+    #[inline]
     fn optim(&self) -> Optim {
         match self {
             White => Optim::Min,
@@ -378,7 +388,7 @@ impl Bitboard {
             });
         }
 
-        let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+        let opponent_color = self.turn.opponent();
 
         directions.iter()
             .filter_map(|d| {
@@ -572,7 +582,7 @@ impl Searchable for Bitboard {
                         // apply move on pieces
                         board_p.add_piece(candidate, &self.turn, ends_as_king);
                         board_p.remove_piece(mover as u8);
-                        board_p.turn = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+                        board_p.turn = self.turn.opponent();
 
                         // find the zobrist hash of this action
                         let mut zobrist_hash = zobrist::get_position_hash(mover, self.turn, starts_as_king);
@@ -603,7 +613,7 @@ impl Searchable for Bitboard {
                     let &jumper = base_action.last().unwrap();
 
                     // generate all possible new boards based on jumpers.
-                    let jump_candidates = self.next_position_possibilities(jumper, &action_type);
+                    let jump_candidates = board.next_position_possibilities(jumper, &action_type);
 
                     for candidate in jump_candidates {
                         let mut action_vec = base_action.clone();
@@ -627,17 +637,18 @@ impl Searchable for Bitboard {
                         board_p.add_piece(candidate, &board.turn, ends_as_king);
                         board_p.remove_piece(jumper);
                         board_p.remove_piece(skipped_over);
-                        board_p.turn = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
 
                         // make the zobrist hash
                         zobrist_hash ^= zobrist::get_position_hash(jumper as u32, board.turn, starts_as_king);
                         zobrist_hash ^= zobrist::get_position_hash(candidate as u32, board.turn, ends_as_king);
-                        // use board_p.turn below it is set to next turn
-                        zobrist_hash ^= zobrist::get_position_hash(skipped_over as u32, board_p.turn, board.is_king(skipped_over));
+                        zobrist_hash ^= zobrist::get_position_hash(skipped_over as u32, board.turn.opponent(), board.is_king(skipped_over));
 
 
                         // check if we cannot jump anymore
                         if (board_p.get_jumpers(&board.turn) & (1 << candidate) == 0) | (!starts_as_king & ends_as_king) {
+                            // flip the turn when it is over
+                            board_p.turn = self.turn.opponent();
+
                             // finally add the turn hash when it is over
                             zobrist_hash ^= zobrist::get_turn_hash();
 
@@ -696,7 +707,7 @@ impl Searchable for Bitboard {
 
         // sketchy way of flipping the turn color enum
         // maybe just match with the opposite color instead
-        let opponent_color: Color = unsafe { mem::transmute((self.turn as u8 + 1) % 2) };
+        let opponent_color = self.turn.opponent();
 
         // erase color from source
         board_p.remove_piece(source);

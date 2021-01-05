@@ -65,6 +65,10 @@ impl<S: Searchable> Engine<S> {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.tt.resize(256);
+    }
+
     #[allow(dead_code, unused_variables)]
     fn shard_helper(&self, state: &S) -> ActionScorePair<S> {
         // this will break up a task into multiple shards that each thread in the threadpool can tackle
@@ -129,8 +133,9 @@ impl<S: Searchable> Engine<S> {
 
         // let mut max_eval = f32::NEG_INFINITY;
 
-        // for state_p in state.generate_all_actions().iter().map(|a| a.state()) {
-        //     let eval = -self.minmax_helper(&state_p, depth - 1, -beta, -alpha);
+        // for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
+        //     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
+        //     let eval = -self.minmax_helper(&state_p, depth - 1, -beta, -alpha, zobrist_hash_p);
         //     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
         //     if max_eval >= beta {
         //         return max_eval;

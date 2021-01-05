@@ -79,8 +79,6 @@ The search algorith uses standard minmax with alpha beta pruning. Additionally, 
 
 The game tree search engine is actually generalized to be able to run on any game you design. You simply need to fully implement the `Searchable` and `Evaluator` traits in the `search` submodule to create and use the engine.
 
-There is a known bug in the search algorithm yielding undefined results.
-
 ### Transposition Table
 
 The transposition table uses [zobrist hashing](https://www.chessprogramming.org/Zobrist_Hashing) on the checker board. The underlying table is an array of clusters index by the zobrist hash key. Each cluster stores three different game states to account for zobrist hash collisions. The replacement strategy if the the cluster is full is to compare replacement values. The replacement value is calculated as `DEPTH - 4 * AGE` where `DEPTH` is the depth the board "sees" into the future and `AGE` is the number of searches that have transpired since the the creation of the value in the transposition table. The default size of the transposition table is tentatively set at a 256 MB, with customizability coming in the future.
