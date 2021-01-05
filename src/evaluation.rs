@@ -1,6 +1,6 @@
 use std::default;
-use std::sync::Arc;
 use std::ops::Fn;
+use std::sync::Arc;
 
 use crate::board::Bitboard;
 use crate::search::Evaluator;
@@ -8,7 +8,7 @@ use crate::search::Evaluator;
 #[allow(dead_code)]
 #[derive(Clone)]
 pub enum BoardEvaluator {
-    Classical(Arc<dyn Fn(&Bitboard) -> f32 + Send +Sync>),
+    Classical(Arc<dyn Fn(&Bitboard) -> f32 + Send + Sync>),
     Nnue,
 }
 use BoardEvaluator::*;
@@ -42,8 +42,8 @@ impl default::Default for BoardEvaluator {
             let black_kings = board.blacks() & board.kings();
             let white_kings = board.whites() & board.kings();
 
-            count_ones(board.blacks()) - count_ones(board.whites()) +
-                count_ones(black_kings) - count_ones(white_kings)
+            count_ones(board.blacks()) - count_ones(board.whites()) + count_ones(black_kings)
+                - count_ones(white_kings)
         }))
     }
 }

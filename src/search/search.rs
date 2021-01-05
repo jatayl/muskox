@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug};
 use std::hash::Hash;
+
 use crate::error;
 
 pub enum Optim {
@@ -26,7 +27,11 @@ pub struct ActionStatePair<S: Searchable> {
 
 impl<S: Searchable> ActionStatePair<S> {
     pub fn new(action: S::Action, state: S, zobrist_diff: u64) -> ActionStatePair<S> {
-        ActionStatePair { action, state, zobrist_diff }
+        ActionStatePair {
+            action,
+            state,
+            zobrist_diff,
+        }
     }
 
     #[inline]
@@ -54,10 +59,10 @@ pub trait Evaluator<S: Searchable>: 'static + Send + Sync {
 #[derive(Debug, PartialEq)]
 pub enum Winner<S: Searchable> {
     Player(S::Side),
-    Draw
+    Draw,
 }
 
-/// Represents the current state of a  game. It is either completed with a 
+/// Represents the current state of a  game. It is either completed with a
 /// [winner](enum.Winner.html) or still in progress.
 #[derive(Debug, PartialEq)]
 pub enum GameState<S: Searchable> {
@@ -68,11 +73,9 @@ pub enum GameState<S: Searchable> {
 impl<S: Searchable> fmt::Display for GameState<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            GameState::Completed(winner) => {
-                match winner {
-                    Winner::Player(player) => write!(f, "Winner: {:?}", player),
-                    Winner::Draw => write!(f, "Draw"),
-                }
+            GameState::Completed(winner) => match winner {
+                Winner::Player(player) => write!(f, "Winner: {:?}", player),
+                Winner::Draw => write!(f, "Draw"),
             },
             GameState::InProgress => write!(f, "In progress"),
         }

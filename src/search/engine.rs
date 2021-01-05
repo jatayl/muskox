@@ -1,12 +1,12 @@
 use std::cmp;
-use std::thread;
 use std::sync::{mpsc, Arc};
+use std::thread;
 use std::time::Duration;
 
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use ordered_float::OrderedFloat;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::search::{TranspositionTable, Searchable, Evaluator, Optim, Side, GameState};
+use crate::search::{Evaluator, GameState, Optim, Searchable, Side, TranspositionTable};
 
 const MAX_DEPTH: u32 = 25;
 const MAX_TIME: u32 = 300000;
@@ -22,27 +22,46 @@ pub struct Engine<S: Searchable> {
 impl<S: Searchable> Engine<S> {
     pub fn new(evaluator: Arc<dyn Evaluator<S>>) -> Self {
         let tt = TranspositionTable::new(256);
-        let pool = Arc::new(ThreadPoolBuilder::new().num_threads(NUM_THREADS - 1).build().unwrap());
+        let pool = Arc::new(
+            ThreadPoolBuilder::new()
+                .num_threads(NUM_THREADS - 1)
+                .build()
+                .unwrap(),
+        );
 
-        Engine { evaluator, tt, pool }
+        Engine {
+            evaluator,
+            tt,
+            pool,
+        }
     }
 
     pub fn search(&mut self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
-        self.tt.new_search();  // increment the generation
+        self.tt.new_search(); // increment the generation
 
         let me = self.clone();
         let state = state.clone();
 
         // set the initial zobrist hash
-        let zobrist_hash = state.zobrist_hash();  // this is relatively expensive function to call
+        let zobrist_hash = state.zobrist_hash(); // this is relatively expensive function to call
 
-        let compute_at_depth = move |d| {
+        let compute_at_depth = move |depth| {
             let action_states = state.generate_all_actions();
-            let evals: Vec<_> = action_states.iter()
-                .map(|p| me.minmax_helper(&p.state(), d, f32::NEG_INFINITY, f32::INFINITY, zobrist_hash ^ p.zobrist_diff()))
+            let evals: Vec<_> = action_states
+                .iter()
+                .map(|p| {
+                    me.minmax_helper(
+                        &p.state(),
+                        depth,
+                        f32::NEG_INFINITY,
+                        f32::INFINITY,
+                        zobrist_hash ^ p.zobrist_diff(),
+                    )
+                })
                 .map(|f| OrderedFloat(f))
                 .collect();
-            let mut out: Vec<_> = action_states.iter()
+            let mut out: Vec<_> = action_states
+                .iter()
                 .map(|p| p.action())
                 .zip(evals.iter())
                 .collect();
@@ -52,7 +71,10 @@ impl<S: Searchable> Engine<S> {
                 Optim::Max => b.1.cmp(a.1),
             });
             out.iter()
-                .map(|(&a, &s)| ActionScorePair {action: a, score: *s})  // copy all of the values and get rid of ordered float wrapper
+                .map(|(&a, &s)| ActionScorePair {
+                    action: a,
+                    score: *s,
+                }) // copy all of the values and get rid of ordered float wrapper
                 // .take(5) // only take the top fives moves.
                 .collect()
         };
@@ -80,11 +102,13 @@ impl<S: Searchable> Engine<S> {
 
         ActionScorePair {
             action: *state.generate_all_actions()[0].action(),
-            score: 0.
+            score: 0.,
         }
     }
 
-    fn minmax_helper(&self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, zobrist_hash: u64) -> f32 {
+    fn minmax_helper(
+        &self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, zobrist_hash: u64,
+    ) -> f32 {
         if let Some(value) = self.tt.probe(zobrist_hash, &state, depth as u8) {
             return value;
         }
@@ -97,7 +121,11 @@ impl<S: Searchable> Engine<S> {
             Optim::Max => {
                 let mut max_eval = f32::NEG_INFINITY;
 
-                for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
+                for (state_p, zobrist_diff) in state
+                    .generate_all_actions()
+                    .iter()
+                    .map(|a| (a.state(), a.zobrist_diff()))
+                {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
@@ -108,23 +136,27 @@ impl<S: Searchable> Engine<S> {
                 }
 
                 max_eval
-            },
+            }
 
             Optim::Min => {
                 let mut min_eval = f32::INFINITY;
 
-                for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
+                for (state_p, zobrist_diff) in state
+                    .generate_all_actions()
+                    .iter()
+                    .map(|a| (a.state(), a.zobrist_diff()))
+                {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
                     beta = *cmp::min(OrderedFloat(beta), OrderedFloat(min_eval));
                     if beta <= alpha {
-                        break
+                        break;
                     }
                 }
 
                 min_eval
-            },
+            }
         };
 
         // POTENTIAL NEGAMAX IMPLEMENTATION
@@ -168,8 +200,8 @@ impl<S: Searchable> Engine<S> {
                 None => Box::new(1..),
             };
 
-            for d in depths_iter {
-                let eval = f(d);
+            for depth in depths_iter {
+                let eval = f(depth);
 
                 // this does not do well enought at all. we are running way to much extra computation
                 match quit_rx.try_recv() {
@@ -226,7 +258,7 @@ impl SearchConstraint {
 
     pub fn time(t: u32) -> Result<Self, &'static str> {
         if t > MAX_TIME {
-            return Err("Time to large! Pick lower than 300 seconds")
+            return Err("Time to large! Pick lower than 300 seconds");
         }
         Ok(SearchConstraint::Time(Duration::from_millis(t.into())))
     }

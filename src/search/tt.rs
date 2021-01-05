@@ -1,5 +1,5 @@
-use std::mem;
 use std::default;
+use std::mem;
 use std::sync::{Arc, RwLock};
 
 use crate::search::Searchable;
@@ -52,12 +52,16 @@ impl<S: Searchable> TranspositionTable<S> {
             .map(|_| RwLock::new([TTEntry::default(); 3]))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        
+
         let clusters = Arc::from(clusters);
 
         let generation = 1;
 
-        TranspositionTable { clusters, n_clusters, generation }
+        TranspositionTable {
+            clusters,
+            n_clusters,
+            generation,
+        }
     }
 
     pub fn new_search(&mut self) {
@@ -66,7 +70,12 @@ impl<S: Searchable> TranspositionTable<S> {
 
     pub fn save(&self, zobrist_hash: u64, &state: &S, depth: u8, score: f32) {
         let generation = self.generation;
-        let entry = TTEntry { state, depth, score, generation };
+        let entry = TTEntry {
+            state,
+            depth,
+            score,
+            generation,
+        };
 
         let key = zobrist_hash as usize % self.n_clusters;
         let mut cluster = self.clusters[key].write().unwrap();

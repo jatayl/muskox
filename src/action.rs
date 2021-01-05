@@ -1,12 +1,12 @@
-use std::fmt;
 use std::cmp;
+use std::fmt;
 
 use crate::error::ParseActionError;
 
 // need lookup table for square index for next direction
 
 /// Represents one of the four directions one can move in the game of checkers
-#[derive(PartialEq, Debug)]  // dont need to keep debug
+#[derive(PartialEq, Debug)] // dont need to keep debug
 pub enum Direction {
     UpLeft,
     UpRight,
@@ -33,15 +33,17 @@ impl Direction {
         }
 
         // check move
-        if source / 4 % 2 == 0 {  // even rows
+        if source / 4 % 2 == 0 {
+            // even rows
             return match diff {
                 -4 => Some(Direction::UpLeft),
                 -3 => Some(Direction::UpRight),
                 4 => Some(Direction::DownLeft),
                 5 => Some(Direction::DownRight),
-                _ => None
+                _ => None,
             };
-        } else {                  // odd rows
+        } else {
+            // odd rows
             return match diff {
                 -5 => Some(Direction::UpLeft),
                 -4 => Some(Direction::UpRight),
@@ -62,14 +64,16 @@ impl Direction {
         let out;
         // maybe make this a cache would be better in terms of simplicity and performance?
         // could defintely make it more compact
-        if position / 4 % 2 == 0 {  // even rows
+        if position / 4 % 2 == 0 {
+            // even rows
             out = match *self {
                 Direction::UpLeft => position - 4,
                 Direction::UpRight => position - 3,
                 Direction::DownLeft => position + 4,
                 Direction::DownRight => position + 5,
             }
-        } else {  // odd rows
+        } else {
+            // odd rows
             out = match *self {
                 Direction::UpLeft => position - 5,
                 Direction::UpRight => position - 4,
@@ -85,7 +89,7 @@ impl Direction {
         let in_col = (position % 4) as i8;
         let out_col = (out % 4) as i8;
         if out_col - in_col != 0 && out_col - in_col != 1 && out_col - in_col != -1 {
-            return None
+            return None;
         }
         Some(out as u8)
     }
@@ -109,7 +113,7 @@ impl Direction {
         let in_col = (position % 4) as i8;
         let out_col = (out % 4) as i8;
         if out_col - in_col != -1 && out_col - in_col != 1 {
-            return None
+            return None;
         }
         Some(out as u8)
     }
@@ -147,25 +151,29 @@ impl Action {
 
         // check that all of the position numbers are in the right range
         if let Some(pos) = positions.iter().find(|&&x| x > 31) {
-            return Err(ParseActionError::PositionValueError { position: pos.to_string() });
+            return Err(ParseActionError::PositionValueError {
+                position: pos.to_string(),
+            });
         }
 
         // check to see if it is a valid length of position vector with max number of moves is 8
         if positions.len() < 2 || positions.len() > 9 {
-            return Err(ParseActionError::MoveQuantityError { quantity: positions.len() });
+            return Err(ParseActionError::MoveQuantityError {
+                quantity: positions.len(),
+            });
         }
 
         let source = positions[0];
         let destination = *positions.last().unwrap();
 
-        let mut data = source as u32;                      // source
-        data |= (destination as u32) << 5;                 // destination
+        let mut data = source as u32; // source
+        data |= (destination as u32) << 5; // destination
 
         let abs_diff = cmp::max(source, destination) - cmp::min(source, destination);
 
         // check if this action has jumps in it
         if positions.len() > 2 || (abs_diff != 3 && abs_diff != 4 && abs_diff != 5) {
-            data |= ((positions.len() - 1) << 10) as u32;  // jump length
+            data |= ((positions.len() - 1) << 10) as u32; // jump length
 
             for i in 0..(positions.len() - 1) {
                 let diff = (positions[i + 1] as i8) - (positions[i] as i8);
@@ -174,11 +182,15 @@ impl Action {
                     -7 => Direction::UpRight,
                     7 => Direction::DownLeft,
                     9 => Direction::DownRight,
-                    _ => return Err(ParseActionError::PositionValueError { position: positions[i].to_string() }),
+                    _ => {
+                        return Err(ParseActionError::PositionValueError {
+                            position: positions[i].to_string(),
+                        })
+                    }
                 };
 
                 let shift = i * 2 + 15;
-                data |= (direction as u32) << shift;      // jump direction
+                data |= (direction as u32) << shift; // jump direction
             }
         }
 
@@ -201,9 +213,14 @@ impl Action {
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     /// ```
     pub fn from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
-        let positions: Vec<_> = movetext.split("-")
-            .map(|x| x.parse::<u8>()
-                .or(Err(ParseActionError::PositionValueError { position: x.to_string() })))
+        let positions: Vec<_> = movetext
+            .split("-")
+            .map(|x| {
+                x.parse::<u8>()
+                    .or(Err(ParseActionError::PositionValueError {
+                        position: x.to_string(),
+                    }))
+            })
             .collect::<Result<_, ParseActionError>>()?;
 
         Action::from_vector(positions)
@@ -240,7 +257,7 @@ impl Action {
     pub fn jump_direction(&self, i: u8) -> Option<Direction> {
         // maybe rename to jump_direction
         if i >= self.jump_len() {
-            return None
+            return None;
         }
         match (self.0 >> (i * 2 + 15)) & 3 {
             0 => Some(Direction::UpLeft),
@@ -287,14 +304,18 @@ impl Action {
                 let mut curr = source;
 
                 for i in 0..self.jump_len() {
-                    curr = self.jump_direction(i).unwrap().relative_jump_from(curr).unwrap();
+                    curr = self
+                        .jump_direction(i)
+                        .unwrap()
+                        .relative_jump_from(curr)
+                        .unwrap();
                     out.push_str(&format!("{}-", curr + 1));
                 }
 
-                out.pop();  // excess '-'
+                out.pop(); // excess '-'
 
                 out
-            },
+            }
         }
     }
 }
@@ -341,7 +362,7 @@ mod tests {
         assert_eq!(pos, None);
 
         let pos = Direction::UpRight.relative_jump_from(7);
-        assert_eq!(pos, None);  // does not work yet
+        assert_eq!(pos, None); // does not work yet
     }
 
     #[test]

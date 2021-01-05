@@ -1,13 +1,13 @@
-use std::io::{self, Write};
-use std::error;
-use std::process;
 use std::default;
+use std::error;
+use std::io::{self, Write};
+use std::process;
 use std::sync::Arc;
 
-use crate::board::{Bitboard, Action};
+use crate::board::{Action, Bitboard};
+use crate::error::ParseCommandError;
 use crate::evaluation::BoardEvaluator;
 use crate::search::{Engine, SearchConstraint, Searchable};
-use crate::error::ParseCommandError;
 
 // convert this to lifetimes later...
 enum Command {
@@ -40,59 +40,105 @@ impl Command {
         // might want different assert size based on the command.
 
         // match a command string to the abstract command object
-        match *command_split.get(0).ok_or(ParseCommandError::NoCommandError)? {
-            "fen" => {
-                match command_split.get(1) {
-                    Some(fen_string) => {
-                        let board = Bitboard::from_fen(&fen_string)?;
-                        Ok(SetFen(board))
-                    },
-                    None => Ok(PrintFen),
+        match *command_split
+            .get(0)
+            .ok_or(ParseCommandError::NoCommandError)?
+        {
+            "fen" => match command_split.get(1) {
+                Some(fen_string) => {
+                    let board = Bitboard::from_fen(&fen_string)?;
+                    Ok(SetFen(board))
                 }
+                None => Ok(PrintFen),
             },
             "gamestate" => Ok(GetGameState),
             "validate" => {
-                let action = Action::from_movetext(command_split.get(1)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
+                let action = Action::from_movetext(command_split.get(1).ok_or(
+                    ParseCommandError::ExpectedParameterError {
+                        parameter: "action".to_string(),
+                    },
+                )?)?;
                 Ok(ValidateAction(action))
-            },
+            }
             "take" => {
-                let action = Action::from_movetext(command_split.get(1)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "action".to_string() })?)?;
+                let action = Action::from_movetext(command_split.get(1).ok_or(
+                    ParseCommandError::ExpectedParameterError {
+                        parameter: "action".to_string(),
+                    },
+                )?)?;
                 Ok(TakeAction(action))
             }
             "generate" => Ok(GenerateAllActions),
             "search" => Ok(Search(match command_split.get(1) {
-                Some(&"depth") => SearchConstraint::depth(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(&"timed") => SearchConstraint::time(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(bad_option) =>
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                Some(&"depth") => SearchConstraint::depth(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(&"timed") => SearchConstraint::time(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(bad_option) => {
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
+                        option: bad_option.to_string(),
+                    }))
+                }
                 None => SearchConstraint::None,
             })),
             "best" => Ok(PickAction(match command_split.get(1) {
-                Some(&"depth") => SearchConstraint::depth(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(&"timed") => SearchConstraint::time(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(bad_option) =>
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                Some(&"depth") => SearchConstraint::depth(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(&"timed") => SearchConstraint::time(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(bad_option) => {
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
+                        option: bad_option.to_string(),
+                    }))
+                }
                 None => SearchConstraint::None,
             })),
             "evaluate" => Ok(EvaluateBoard(match command_split.get(1) {
-                 Some(&"depth") => SearchConstraint::depth(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(&"timed") => SearchConstraint::time(command_split.get(2)
-                    .ok_or(ParseCommandError::ExpectedParameterError { parameter: "depth".to_string() })?
-                    .parse::<u32>()?)?,
-                Some(bad_option) =>
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError { option: bad_option.to_string() })),
+                Some(&"depth") => SearchConstraint::depth(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(&"timed") => SearchConstraint::time(
+                    command_split
+                        .get(2)
+                        .ok_or(ParseCommandError::ExpectedParameterError {
+                            parameter: "depth".to_string(),
+                        })?
+                        .parse::<u32>()?,
+                )?,
+                Some(bad_option) => {
+                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
+                        option: bad_option.to_string(),
+                    }))
+                }
                 None => SearchConstraint::None,
             })),
             "turn" => Ok(GetTurn),
@@ -119,7 +165,11 @@ impl default::Default for State {
         let evaluator = Arc::new(BoardEvaluator::default());
         let engine = Engine::new(evaluator);
         let action_history = Vec::new();
-        State { board, engine, action_history }
+        State {
+            board,
+            engine,
+            action_history,
+        }
     }
 }
 
@@ -179,7 +229,8 @@ impl State {
             return;
         }
 
-        all_action_pairs.iter()
+        all_action_pairs
+            .iter()
             .map(|p| p.action())
             .map(|a| a.to_string())
             .for_each(|t| {
@@ -258,10 +309,11 @@ impl State {
 
         if self.action_history.len() == 0 {
             println!("\nno moves taken yet");
-            return
+            return;
         }
 
-        self.action_history.iter()
+        self.action_history
+            .iter()
             .map(|a| a.movetext())
             .for_each(|t| {
                 out.push_str(&t);
@@ -294,7 +346,9 @@ pub fn run() -> ! {
         let _ = io::stdout().flush();
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input).expect("Error with your standard input!");
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Error with your standard input!");
         let input = input.trim();
 
         let command = Command::parse(&input);

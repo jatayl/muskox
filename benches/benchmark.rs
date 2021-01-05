@@ -18,7 +18,11 @@ pub fn movepick_benchmarker(c: &mut Criterion) {
     let constraint = SearchConstraint::none();
 
     let mut group = c.benchmark_group("engine");
-    for (i, board) in BOARDS_FENS.iter().map(|s| Bitboard::from_fen(s).unwrap()).enumerate() {
+    for (i, board) in BOARDS_FENS
+        .iter()
+        .map(|s| Bitboard::from_fen(s).unwrap())
+        .enumerate()
+    {
         group.bench_with_input(i.to_string(), &board, |b, &board| {
             b.iter(|| engine.search(&board, &constraint));
         });
@@ -27,7 +31,11 @@ pub fn movepick_benchmarker(c: &mut Criterion) {
 
 pub fn generate_benchmarker(c: &mut Criterion) {
     let mut group = c.benchmark_group("generate all moves");
-    for (i, board) in BOARDS_FENS.iter().map(|s| Bitboard::from_fen(s).unwrap()).enumerate() {
+    for (i, board) in BOARDS_FENS
+        .iter()
+        .map(|s| Bitboard::from_fen(s).unwrap())
+        .enumerate()
+    {
         group.bench_with_input(i.to_string(), &board, |b, &board| {
             b.iter(|| board.generate_all_actions());
         });
