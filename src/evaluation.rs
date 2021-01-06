@@ -2,9 +2,9 @@ use std::default;
 use std::ops::Fn;
 
 use lazy_static::lazy_static;
-use ordered_float::OrderedFloat;
 
 use crate::board::Bitboard;
+use crate::search::Score;
 
 // honestly not 100% sure what to do with this module as there are many different approaches
 // each with their own benefits. when i get a better sense with what i want out of this module
@@ -16,14 +16,14 @@ lazy_static! {
 
 #[allow(dead_code)]
 pub enum BoardEvaluator {
-    Classical(Box<dyn Fn(&Bitboard) -> OrderedFloat<f32> + Send + Sync>),
+    Classical(Box<dyn Fn(&Bitboard) -> Score + Send + Sync>),
     Nnue,
 }
 use BoardEvaluator::*;
 
 impl BoardEvaluator {
     #[inline]
-    pub fn eval(&self, board: &Bitboard) -> OrderedFloat<f32> {
+    pub fn eval(&self, board: &Bitboard) -> Score {
         match self {
             Classical(f) => f(&board),
             Nnue => panic!("Cannot use NNUE evaluation yet!"),
@@ -37,10 +37,10 @@ impl default::Default for BoardEvaluator {
             // need the evaluation for the finished game.,..
             // reaccess this as mask
             let count_ones = |mut mask: u32| {
-                let mut count = OrderedFloat(0.);
+                let mut count = Score::from(0.);
                 while mask != 0 {
                     if mask & 1 == 1 {
-                        count = count + OrderedFloat(1.);
+                        count += Score::from(1.);
                     }
                     mask = mask >> 1;
                 }

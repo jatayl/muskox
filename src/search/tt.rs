@@ -2,9 +2,7 @@ use std::default;
 use std::mem;
 use std::sync::{Arc, RwLock};
 
-use ordered_float::OrderedFloat;
-
-use crate::search::Searchable;
+use crate::search::{Score, Searchable};
 
 const DEFAULT_FLAG: u8 = 255;
 const CLUSTER_SIZE: usize = 3;
@@ -13,7 +11,7 @@ const CLUSTER_SIZE: usize = 3;
 struct TTEntry<S: Searchable> {
     state: S,
     depth: u8,
-    score: OrderedFloat<f32>,
+    score: Score,
     generation: u8,
 }
 
@@ -22,7 +20,7 @@ impl<S: Searchable> default::Default for TTEntry<S> {
         TTEntry {
             state: S::default(),
             depth: DEFAULT_FLAG,
-            score: OrderedFloat(0.),
+            score: Score::from(0.),
             generation: 0,
         }
     }
@@ -70,7 +68,7 @@ impl<S: Searchable> TranspositionTable<S> {
         self.generation += 1;
     }
 
-    pub fn save(&self, zobrist_hash: u64, &state: &S, depth: u8, score: OrderedFloat<f32>) {
+    pub fn save(&self, zobrist_hash: u64, &state: &S, depth: u8, score: Score) {
         let generation = self.generation;
         let entry = TTEntry {
             state,
@@ -112,7 +110,7 @@ impl<S: Searchable> TranspositionTable<S> {
         // }
     }
 
-    pub fn probe(&self, zobrist_hash: u64, state: &S, depth: u8) -> Option<OrderedFloat<f32>> {
+    pub fn probe(&self, zobrist_hash: u64, state: &S, depth: u8) -> Option<Score> {
         let key = zobrist_hash as usize % self.n_clusters;
         let cluster = self.clusters[key].read().unwrap();
 

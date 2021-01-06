@@ -1,12 +1,10 @@
 use std::collections::VecDeque;
 use std::default;
 
-use ordered_float::OrderedFloat;
-
 use crate::board::GLOBAL_EVAL;
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
-use crate::search::{ActionStatePair, GameState, Optim, Searchable, Side, Winner};
+use crate::search::{ActionStatePair, GameState, Optim, Score, Searchable, Side, Winner};
 use crate::zobrist;
 
 type Mask = u32;
@@ -17,8 +15,6 @@ const MASK_L3: Mask = 0x07070707;
 const MASK_L5: Mask = 0xe0e0e0e0;
 const MASK_R3: Mask = 0xe0e0e0e0;
 const MASK_R5: Mask = 0x07070707;
-
-// maybe want to consider making a piece enum so we can abstract the king
 
 /// Represents of the two colors that exists on a checkerboard
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -570,7 +566,7 @@ impl Searchable for Bitboard {
         GameState::InProgress
     }
 
-    fn evaluate(&self) -> OrderedFloat<f32> {
+    fn evaluate(&self) -> Score {
         GLOBAL_EVAL.eval(self)
     }
 

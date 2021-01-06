@@ -8,9 +8,11 @@ mod zobrist;
 
 pub mod search {
     mod engine;
+    mod score;
     mod search;
     mod tt;
     pub use engine::*;
+    pub use score::*;
     pub use search::*;
     pub use tt::*;
 }
