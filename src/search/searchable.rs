@@ -2,7 +2,6 @@ use std::fmt::{self, Debug};
 use std::hash::Hash;
 
 use crate::error;
-use crate::search::Score;
 
 pub enum Optim {
     Max,
@@ -17,7 +16,7 @@ pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Default + Send + Sync
     fn take_action(&self, _: &Self::Action) -> Result<Self, error::ActionError>;
     fn get_game_state(&self) -> GameState<Self>;
     fn turn(&self) -> Self::Side;
-    fn evaluate(&self) -> Score;
+    fn evaluate(&self) -> super::Score;
     fn zobrist_hash(&self) -> u64;
 }
 

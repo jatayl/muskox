@@ -42,7 +42,7 @@ impl default::Default for BoardEvaluator {
                     if mask & 1 == 1 {
                         count += Score::from(1.);
                     }
-                    mask = mask >> 1;
+                    mask >>= 1;
                 }
                 count
             };

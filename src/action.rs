@@ -35,22 +35,22 @@ impl Direction {
         // check move
         if source / 4 % 2 == 0 {
             // even rows
-            return match diff {
+            match diff {
                 -4 => Some(Direction::UpLeft),
                 -3 => Some(Direction::UpRight),
                 4 => Some(Direction::DownLeft),
                 5 => Some(Direction::DownRight),
                 _ => None,
-            };
+            }
         } else {
             // odd rows
-            return match diff {
+            match diff {
                 -5 => Some(Direction::UpLeft),
                 -4 => Some(Direction::UpRight),
                 3 => Some(Direction::DownLeft),
                 4 => Some(Direction::DownRight),
                 _ => None,
-            };
+            }
         }
     }
 
@@ -81,7 +81,7 @@ impl Direction {
                 Direction::DownRight => position + 4,
             }
         }
-        if out > 31 || out < 0 {
+        if !(0..=31).contains(&out) {
             return None;
         }
         // ensure that we dont escape the bounds on the board.
@@ -106,7 +106,7 @@ impl Direction {
             Direction::DownLeft => position + 7,
             Direction::DownRight => position + 9,
         };
-        if out > 31 || out < 0 {
+        if !(0..=31).contains(&out) {
             return None;
         }
 
@@ -214,12 +214,12 @@ impl Action {
     /// ```
     pub fn from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
         let positions: Vec<_> = movetext
-            .split("-")
+            .split('-')
             .map(|x| {
                 x.parse::<u8>()
-                    .or(Err(ParseActionError::PositionValueError {
+                    .map_err(|_| ParseActionError::PositionValueError {
                         position: x.to_string(),
-                    }))
+                    })
             })
             .collect::<Result<_, ParseActionError>>()?;
 

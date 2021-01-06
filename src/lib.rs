@@ -9,16 +9,15 @@ mod zobrist;
 pub mod search {
     mod engine;
     mod score;
-    mod search;
+    mod searchable;
     mod tt;
+
     pub use engine::*;
     pub use score::*;
-    pub use search::*;
-    pub use tt::*;
+    pub use searchable::*;
 }
 
 pub mod board {
     pub use super::action::*;
     pub use super::bitboard::*;
-    pub use super::evaluation::*;
 }

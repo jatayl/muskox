@@ -33,7 +33,7 @@ impl Command {
         // this parser is supposed to do the error handling of commands strings
         // so that the other part of this module does not have to
 
-        let command_split: Vec<_> = command.split(" ").collect();
+        let command_split: Vec<_> = command.split(' ').collect();
 
         // might want different assert size based on the command.
 
@@ -144,7 +144,7 @@ impl Command {
             "history" => Ok(GetMoveHistory),
             "clear" => Ok(Clear),
             "exit" => Ok(Exit),
-            _ => Err(format!("Invalid command: {}!", command))?,
+            _ => Err(format!("Invalid command: {}!", command).into()),
         }
     }
 }
@@ -221,7 +221,7 @@ impl State {
         let mut out = String::new();
         let all_action_pairs = self.board.generate_all_actions();
 
-        if all_action_pairs.len() == 0 {
+        if all_action_pairs.is_empty() {
             println!("\nno valid actions");
             return;
         }
@@ -252,7 +252,7 @@ impl State {
 
         let search = self.engine.search(&self.board, constraint);
 
-        if search.len() == 0 {
+        if search.is_empty() {
             println!("\nno valid actions");
             return;
         }
@@ -304,7 +304,7 @@ impl State {
         // going to have to make sure we comply with PDN later
         let mut out = String::new();
 
-        if self.action_history.len() == 0 {
+        if self.action_history.is_empty() {
             println!("\nno moves taken yet");
             return;
         }

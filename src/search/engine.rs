@@ -1,11 +1,12 @@
 use std::cmp::{self, Reverse};
+use std::default::Default;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::search::{GameState, Optim, Score, Searchable, Side, TranspositionTable};
+use super::{tt::TranspositionTable, GameState, Optim, Score, Searchable, Side};
 
 const MAX_DEPTH: u32 = 25;
 const MAX_TIME: u32 = 300000;
@@ -15,6 +16,12 @@ const NUM_THREADS: usize = 8;
 pub struct Engine<S: Searchable> {
     tt: TranspositionTable<S>,
     pool: Arc<ThreadPool>,
+}
+
+impl<S: Searchable> Default for Engine<S> {
+    fn default() -> Self {
+        Engine::new()
+    }
 }
 
 impl<S: Searchable> Engine<S> {
@@ -34,7 +41,7 @@ impl<S: Searchable> Engine<S> {
         self.tt.new_search(); // increment the generation
 
         let me = self.clone();
-        let state = state.clone();
+        let state = *state;
 
         // set the initial zobrist hash
         let zobrist_hash = state.zobrist_hash(); // this is relatively expensive function to call

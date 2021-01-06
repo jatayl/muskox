@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::default;
 
-use crate::board::GLOBAL_EVAL;
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
+use crate::evaluation::GLOBAL_EVAL;
 use crate::search::{ActionStatePair, GameState, Optim, Score, Searchable, Side, Winner};
 use crate::zobrist;
 
@@ -88,7 +88,7 @@ impl Bitboard {
 
         let fen_string: String = fen_string.chars().filter(|c| !c.is_whitespace()).collect();
 
-        let d: Vec<_> = fen_string.split(":").collect();
+        let d: Vec<_> = fen_string.split(':').collect();
 
         if d.len() != 3 {
             return Err(ParseBoardError::ColonQuantityError);
@@ -110,7 +110,7 @@ impl Bitboard {
 
         for position in d.iter().skip(1) {
             let pieces_string: String = position.chars().skip(1).collect();
-            let pieces: Vec<_> = pieces_string.split(",").collect();
+            let pieces: Vec<_> = pieces_string.split(',').collect();
 
             let mut temp: Mask = 0;
 
@@ -122,20 +122,19 @@ impl Bitboard {
                             .skip(1)
                             .collect::<String>()
                             .parse::<u8>()
-                            .or_else(|_| {
-                                Err(ParseBoardError::PositionError {
-                                    position: piece.to_string(),
-                                })
+                            .map_err(|_| ParseBoardError::PositionError {
+                                position: piece.to_string(),
                             })?
                             - 1,
                         true,
                     ),
                     Some(_) => (
-                        piece.parse::<u8>().or_else(|_| {
-                            Err(ParseBoardError::PositionError {
+                        piece
+                            .parse::<u8>()
+                            .map_err(|_| ParseBoardError::PositionError {
                                 position: piece.to_string(),
-                            })
-                        })? - 1,
+                            })?
+                            - 1,
                         false,
                     ),
                     None => break, // if no pieces exist. not super pretty or clear like this...
@@ -240,7 +239,7 @@ impl Bitboard {
                     out.push_str(&pos.to_string());
                     out.push(',');
                 }
-                it = it >> 1;
+                it >>= 1;
                 pos += 1;
             }
             out.pop(); // remove unnecessary last comma
@@ -301,9 +300,9 @@ impl Bitboard {
                 out.push_str("| ");
                 out.push(c);
                 out.push(' ');
-                blacks_iter = blacks_iter >> 1;
-                whites_iter = whites_iter >> 1;
-                kings_iter = kings_iter >> 1;
+                blacks_iter >>= 1;
+                whites_iter >>= 1;
+                kings_iter >>= 1;
             }
             out.push_str("|\n");
         }
@@ -575,7 +574,7 @@ impl Searchable for Bitboard {
         let pop_piece = |mask: &mut Mask, color: &Color| {
             let position = match *color {
                 White => mask.trailing_zeros(),
-                Black => (0x80000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+                Black => (0x80000000_u32 >> mask.leading_zeros()).trailing_zeros(),
             };
             *mask ^= 1 << position;
             position
@@ -622,7 +621,7 @@ impl Searchable for Bitboard {
                             starts_as_king || dest_row == 0 || dest_row == 7
                         };
 
-                        let mut board_p = self.clone();
+                        let mut board_p = *self;
 
                         // apply move on pieces
                         board_p.add_piece(candidate, &self.turn, ends_as_king);
@@ -652,7 +651,7 @@ impl Searchable for Bitboard {
 
                     let base_action = vec![position as u8];
 
-                    boards_in_progress.push_back((self.clone(), base_action, 0));
+                    boards_in_progress.push_back((*self, base_action, 0));
                 }
 
                 while let Some((board, base_action, mut zobrist_hash)) =
@@ -684,7 +683,7 @@ impl Searchable for Bitboard {
                         };
 
                         // apply jump on piece
-                        let mut board_p = board.clone();
+                        let mut board_p = board;
                         board_p.add_piece(candidate, &board.turn, ends_as_king);
                         board_p.remove_piece(jumper);
                         board_p.remove_piece(skipped_over);
@@ -750,7 +749,7 @@ impl Searchable for Bitboard {
     /// assert_eq!(board.validate_action(&action), Err(ActionError::SinglePieceBackwardsError));
     /// ```
     fn take_action(&self, action: &Action) -> Result<Bitboard, ActionError> {
-        let mut board_p = self.clone();
+        let mut board_p = *self;
 
         let source = action.source();
         let destination = action.destination();
@@ -778,7 +777,7 @@ impl Searchable for Bitboard {
             let color = self.turn;
             return Err(ActionError::SourceColorError {
                 position: source,
-                color: color,
+                color,
             });
         }
 
@@ -874,7 +873,7 @@ impl Searchable for Bitboard {
         let pop_piece = |mask: &mut Mask, color: &Color| {
             let position = match *color {
                 White => mask.trailing_zeros(),
-                Black => (0x80000000 as u32 >> mask.leading_zeros()).trailing_zeros(),
+                Black => (0x80000000_u32 >> mask.leading_zeros()).trailing_zeros(),
             };
             *mask ^= 1 << position;
             position
