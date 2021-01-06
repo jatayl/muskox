@@ -2,11 +2,9 @@ use std::default;
 use std::error;
 use std::io::{self, Write};
 use std::process;
-use std::sync::Arc;
 
 use crate::board::{Action, Bitboard};
 use crate::error::ParseCommandError;
-use crate::evaluation::BoardEvaluator;
 use crate::search::{Engine, SearchConstraint, Searchable};
 
 // convert this to lifetimes later...
@@ -162,8 +160,7 @@ struct State {
 impl default::Default for State {
     fn default() -> State {
         let board = Bitboard::default();
-        let evaluator = Arc::new(BoardEvaluator::default());
-        let engine = Engine::new(evaluator);
+        let engine = Engine::new();
         let action_history = Vec::new();
         State {
             board,

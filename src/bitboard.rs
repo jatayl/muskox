@@ -1,6 +1,9 @@
 use std::collections::VecDeque;
 use std::default;
 
+use ordered_float::OrderedFloat;
+
+use crate::board::GLOBAL_EVAL;
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
 use crate::search::{ActionStatePair, GameState, Optim, Searchable, Side, Winner};
@@ -565,6 +568,10 @@ impl Searchable for Bitboard {
 
         // if none of these are satisfied, then the game is still in progress
         GameState::InProgress
+    }
+
+    fn evaluate(&self) -> OrderedFloat<f32> {
+        GLOBAL_EVAL.eval(self)
     }
 
     fn generate_all_actions(&self) -> Vec<ActionStatePair<Bitboard>> {

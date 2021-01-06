@@ -128,7 +128,7 @@ pub enum ActionType {
 
 // source: 5, destination: 5, jump length: 5, jump directions: 8 * 2 bits (four directions), unused: 1
 /// Represents an action that can be made on a checkerboard
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Action(u32);
 
 impl Action {

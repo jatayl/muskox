@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use muskox::board::{Bitboard, BoardEvaluator};
+use muskox::board::Bitboard;
 use muskox::search::{Engine, SearchConstraint, Searchable};
 
 static BOARDS_FENS: [&'static str; 4] = [
@@ -13,8 +11,7 @@ static BOARDS_FENS: [&'static str; 4] = [
 ];
 
 pub fn movepick_benchmarker(c: &mut Criterion) {
-    let evaluator = Arc::new(BoardEvaluator::default());
-    let mut engine = Engine::new(evaluator);
+    let mut engine = Engine::new();
     let constraint = SearchConstraint::none();
 
     let mut group = c.benchmark_group("engine");

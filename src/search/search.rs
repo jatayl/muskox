@@ -1,6 +1,8 @@
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
+use ordered_float::OrderedFloat;
+
 use crate::error;
 
 pub enum Optim {
@@ -9,13 +11,14 @@ pub enum Optim {
 }
 
 pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Default + Send + Sync {
-    type Action: Send + Copy;
+    type Action: Copy + Send + PartialEq;
     type Side: Side;
 
     fn generate_all_actions(&self) -> Vec<ActionStatePair<Self>>;
     fn take_action(&self, _: &Self::Action) -> Result<Self, error::ActionError>;
     fn get_game_state(&self) -> GameState<Self>;
     fn turn(&self) -> Self::Side;
+    fn evaluate(&self) -> OrderedFloat<f32>;
     fn zobrist_hash(&self) -> u64;
 }
 
@@ -48,10 +51,6 @@ impl<S: Searchable> ActionStatePair<S> {
     pub fn zobrist_diff(&self) -> &u64 {
         &self.zobrist_diff
     }
-}
-
-pub trait Evaluator<S: Searchable>: 'static + Send + Sync {
-    fn eval(&self, _: &S) -> f32;
 }
 
 /// Represents a winner of a checkers game. The winner can either be a particular

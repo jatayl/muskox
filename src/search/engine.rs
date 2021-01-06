@@ -1,4 +1,4 @@
-use std::cmp;
+use std::cmp::{self, Reverse};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use ordered_float::OrderedFloat;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::search::{Evaluator, GameState, Optim, Searchable, Side, TranspositionTable};
+use crate::search::{GameState, Optim, Searchable, Side, TranspositionTable};
 
 const MAX_DEPTH: u32 = 25;
 const MAX_TIME: u32 = 300000;
@@ -14,13 +14,12 @@ const NUM_THREADS: usize = 8;
 
 #[derive(Clone)]
 pub struct Engine<S: Searchable> {
-    evaluator: Arc<dyn Evaluator<S>>,
     tt: TranspositionTable<S>,
     pool: Arc<ThreadPool>,
 }
 
 impl<S: Searchable> Engine<S> {
-    pub fn new(evaluator: Arc<dyn Evaluator<S>>) -> Self {
+    pub fn new() -> Self {
         let tt = TranspositionTable::new(256);
         let pool = Arc::new(
             ThreadPoolBuilder::new()
@@ -29,11 +28,7 @@ impl<S: Searchable> Engine<S> {
                 .unwrap(),
         );
 
-        Engine {
-            evaluator,
-            tt,
-            pool,
-        }
+        Engine { tt, pool }
     }
 
     pub fn search(&mut self, state: &S, constraint: &SearchConstraint) -> Vec<ActionScorePair<S>> {
@@ -53,27 +48,28 @@ impl<S: Searchable> Engine<S> {
                     me.minmax_helper(
                         &p.state(),
                         depth,
-                        f32::NEG_INFINITY,
-                        f32::INFINITY,
+                        OrderedFloat(f32::NEG_INFINITY),
+                        OrderedFloat(f32::INFINITY),
                         zobrist_hash ^ p.zobrist_diff(),
                     )
                 })
-                .map(|f| OrderedFloat(f))
                 .collect();
-            let mut out: Vec<_> = action_states
+            let mut results: Vec<_> = action_states
                 .iter()
                 .map(|p| p.action())
                 .zip(evals.iter())
                 .collect();
             // sort based on the evaluations
-            out.sort_by(|a, b| match state.turn().optim() {
+            results.sort_by(|a, b| match state.turn().optim() {
                 Optim::Min => a.1.cmp(b.1),
                 Optim::Max => b.1.cmp(a.1),
             });
-            out.iter()
+            // can get rid of this part..
+            results
+                .iter()
                 .map(|(&a, &s)| ActionScorePair {
                     action: a,
-                    score: *s,
+                    score: s,
                 }) // copy all of the values and get rid of ordered float wrapper
                 // .take(5) // only take the top fives moves.
                 .collect()
@@ -102,34 +98,36 @@ impl<S: Searchable> Engine<S> {
 
         ActionScorePair {
             action: *state.generate_all_actions()[0].action(),
-            score: 0.,
+            score: OrderedFloat(0.),
         }
     }
 
     fn minmax_helper(
-        &self, state: &S, depth: u32, mut alpha: f32, mut beta: f32, zobrist_hash: u64,
-    ) -> f32 {
+        &self, state: &S, depth: u32, mut alpha: OrderedFloat<f32>, mut beta: OrderedFloat<f32>,
+        zobrist_hash: u64,
+    ) -> OrderedFloat<f32> {
         if let Some(value) = self.tt.probe(zobrist_hash, &state, depth as u8) {
             return value;
         }
 
         if (depth == 0) | (state.get_game_state() != GameState::InProgress) {
-            return self.evaluator.eval(&state);
+            // return self.evaluator.eval(&state);
+            return state.evaluate();
         }
 
         let eval = match state.turn().optim() {
             Optim::Max => {
-                let mut max_eval = f32::NEG_INFINITY;
+                let mut max_eval = OrderedFloat(f32::NEG_INFINITY);
 
-                for (state_p, zobrist_diff) in state
-                    .generate_all_actions()
-                    .iter()
-                    .map(|a| (a.state(), a.zobrist_diff()))
-                {
+                // sort it in reverse so we get higest nodes first for the max optimizer
+                let mut nodes = state.generate_all_actions();
+                nodes.sort_by_key(|n| Reverse(n.state().evaluate()));
+
+                for (state_p, zobrist_diff) in nodes.iter().map(|a| (a.state(), a.zobrist_diff())) {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
-                    max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
-                    alpha = *cmp::max(OrderedFloat(alpha), OrderedFloat(max_eval));
+                    max_eval = cmp::max(max_eval, eval);
+                    alpha = cmp::max(alpha, max_eval);
                     if beta <= alpha {
                         break;
                     }
@@ -139,17 +137,16 @@ impl<S: Searchable> Engine<S> {
             }
 
             Optim::Min => {
-                let mut min_eval = f32::INFINITY;
+                let mut min_eval = OrderedFloat(f32::INFINITY);
 
-                for (state_p, zobrist_diff) in state
-                    .generate_all_actions()
-                    .iter()
-                    .map(|a| (a.state(), a.zobrist_diff()))
-                {
+                let mut nodes = state.generate_all_actions();
+                nodes.sort_by_key(|n| n.state().evaluate()); // we want lowest values first
+
+                for (state_p, zobrist_diff) in nodes.iter().map(|a| (a.state(), a.zobrist_diff())) {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
                     let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
-                    min_eval = *cmp::min(OrderedFloat(min_eval), OrderedFloat(eval));
-                    beta = *cmp::min(OrderedFloat(beta), OrderedFloat(min_eval));
+                    min_eval = cmp::min(min_eval, eval);
+                    beta = cmp::min(beta, min_eval);
                     if beta <= alpha {
                         break;
                     }
@@ -227,7 +224,7 @@ impl<S: Searchable> Engine<S> {
 
 pub struct ActionScorePair<S: Searchable> {
     action: S::Action,
-    score: f32,
+    score: OrderedFloat<f32>,
 }
 
 impl<S: Searchable> ActionScorePair<S> {
@@ -237,7 +234,7 @@ impl<S: Searchable> ActionScorePair<S> {
     }
 
     #[inline]
-    pub fn score(&self) -> f32 {
+    pub fn score(&self) -> OrderedFloat<f32> {
         self.score
     }
 }
