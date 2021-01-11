@@ -116,7 +116,6 @@ impl<S: Searchable> Engine<S> {
         }
 
         if (depth == 0) | (state.get_game_state() != GameState::InProgress) {
-            // return self.evaluator.eval(&state);
             return state.evaluate();
         }
 

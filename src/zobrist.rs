@@ -22,17 +22,18 @@ lazy_static! {
 }
 
 #[inline]
-pub fn get_position_hash(position: u32, color: Color, is_king: bool) -> u64 {
+pub fn get_position_hash(position: u8, color: Color, is_king: bool) -> u64 {
     // maybe check the bounds on position and return and option
+    let position = position as usize;
 
     // get a particular hash for a color and a position
     let mut hash = match color {
-        Color::Black => ZOBRIST_TABLE[position as usize],
-        Color::White => ZOBRIST_TABLE[32 + position as usize],
+        Color::Black => ZOBRIST_TABLE[position],
+        Color::White => ZOBRIST_TABLE[32 + position],
     };
 
     if is_king {
-        hash ^= ZOBRIST_TABLE[64 + position as usize];
+        hash ^= ZOBRIST_TABLE[64 + position];
     }
 
     hash

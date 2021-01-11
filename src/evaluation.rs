@@ -55,3 +55,31 @@ impl default::Default for BoardEvaluator {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DEFAULT_BOARD: &'static str =
+        "B:W21,22,23,24,25,26,27,28,29,30,31,32:B1,2,3,4,5,6,7,8,9,10,11,12";
+    const TEST_BOARD_1: &'static str = "B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29";
+    const TEST_BOARD_2: &'static str = "W:W9,K11,19,K26,27,30:B15,22,25,K32";
+    const TEST_BOARD_3: &'static str = "B:WK3,11,23,25,26,27:B6,7,8,18,19,21,K31";
+
+    #[test]
+    fn default_evaluator_test() {
+        use crate::search::{Score, Searchable};
+
+        let board = Bitboard::from_fen(DEFAULT_BOARD).unwrap();
+        assert_eq!(board.evaluate(), Score::from(0.));
+
+        let board = Bitboard::from_fen(TEST_BOARD_1).unwrap();
+        assert_eq!(board.evaluate(), Score::from(1.));
+
+        let board = Bitboard::from_fen(TEST_BOARD_2).unwrap();
+        assert_eq!(board.evaluate(), Score::from(-3.));
+
+        let board = Bitboard::from_fen(TEST_BOARD_3).unwrap();
+        assert_eq!(board.evaluate(), Score::from(1.));
+    }
+}

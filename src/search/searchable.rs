@@ -1,8 +1,6 @@
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
-use crate::error;
-
 pub enum Optim {
     Max,
     Min,
@@ -11,9 +9,10 @@ pub enum Optim {
 pub trait Searchable: 'static + Sized + Copy + Eq + Hash + Default + Send + Sync {
     type Action: Copy + Send + PartialEq;
     type Side: Side;
+    type ActionError;
 
     fn generate_all_actions(&self) -> Vec<ActionStatePair<Self>>;
-    fn take_action(&self, _: &Self::Action) -> Result<Self, error::ActionError>;
+    fn take_action(&self, _: Self::Action) -> Result<Self, Self::ActionError>;
     fn get_game_state(&self) -> GameState<Self>;
     fn turn(&self) -> Self::Side;
     fn evaluate(&self) -> super::Score;

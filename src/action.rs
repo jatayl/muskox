@@ -54,7 +54,6 @@ impl Direction {
         }
     }
 
-    // these two functions are not completely safe.
     pub(crate) fn relative_to(&self, position: u8) -> Option<u8> {
         // need to check boundaries
         if position > 31 {
@@ -86,8 +85,8 @@ impl Direction {
         }
         // ensure that we dont escape the bounds on the board.
         // maybe change this strat later
-        let in_col = (position % 4) as i8;
-        let out_col = (out % 4) as i8;
+        let in_col = position % 4;
+        let out_col = out % 4;
         if out_col - in_col != 0 && out_col - in_col != 1 && out_col - in_col != -1 {
             return None;
         }
@@ -120,7 +119,7 @@ impl Direction {
 }
 
 /// Represents one of the two types of moves that exist in checkers
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ActionType {
     Move,
     Jump,
@@ -128,7 +127,7 @@ pub enum ActionType {
 
 // source: 5, destination: 5, jump length: 5, jump directions: 8 * 2 bits (four directions), unused: 1
 /// Represents an action that can be made on a checkerboard
-#[derive(Clone, Copy, PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct Action(u32);
 
 impl Action {

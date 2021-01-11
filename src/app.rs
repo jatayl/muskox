@@ -177,8 +177,8 @@ impl State {
             SetFen(board) => self.set_board(board),
             PrintFen => self.print_fen(),
             GetGameState => self.get_game_state(),
-            ValidateAction(action) => self.validate_action(action),
-            TakeAction(action) => self.take_action(action),
+            ValidateAction(action) => self.validate_action(*action),
+            TakeAction(action) => self.take_action(*action),
             GenerateAllActions => self.generate_all_actions(),
             GetTurn => self.get_turn(),
             Search(constraint) => self.search(constraint),
@@ -209,8 +209,8 @@ impl State {
     }
 
     #[inline]
-    fn validate_action(&self, action: &Action) {
-        let validate = self.board.validate_action(&action);
+    fn validate_action(&self, action: Action) {
+        let validate = self.board.validate_action(action);
         match validate {
             Ok(()) => println!("\nOk"),
             Err(err) => println!("\nError: {}", err),
@@ -285,9 +285,9 @@ impl State {
     }
 
     #[inline]
-    fn take_action(&mut self, action: &Action) {
+    fn take_action(&mut self, action: Action) {
         let validate = self.board.take_action(action);
-        self.action_history.push(*action);
+        self.action_history.push(action);
         match validate {
             Ok(board_p) => self.board = board_p,
             Err(err) => println!("\nError: {}", err),
