@@ -4,6 +4,7 @@ use std::default;
 use crate::board::{Action, ActionType, Direction};
 use crate::error::{ActionError, ParseBoardError};
 use crate::evaluation::GLOBAL_EVAL;
+use crate::parse;
 use crate::search::{ActionStatePair, GameState, Optim, Score, Searchable, Side, Winner};
 use crate::zobrist;
 
@@ -67,6 +68,15 @@ impl default::Default for Bitboard {
 }
 
 impl Bitboard {
+    pub(crate) fn new(blacks: Mask, whites: Mask, kings: Mask, turn: Color) -> Self {
+        Bitboard {
+            blacks,
+            whites,
+            kings,
+            turn,
+        }
+    }
+
     /// Creates a new bitboard from a string FEN tag according to Portable Draughts Notation.
     /// (PDN). Read more about the notation [here](https://en.wikipedia.org/wiki/Portable_Draughts_Notation).
     ///
@@ -84,99 +94,8 @@ impl Bitboard {
     /// // will put proof that it works here
     /// ```
     pub fn from_fen(fen_string: &str) -> Result<Self, ParseBoardError> {
-        // maybe clean up errors handling here. they are rather rigid could make them more useful
-
-        let fen_string: String = fen_string.chars().filter(|c| !c.is_whitespace()).collect();
-
-        let d: Vec<_> = fen_string.split(':').collect();
-
-        if d.len() != 3 {
-            return Err(ParseBoardError::ColonQuantityError);
-        }
-
-        let turn = match d[0] {
-            "B" => Black,
-            "W" => White,
-            ltr => {
-                return Err(ParseBoardError::ColorError {
-                    letter: ltr.to_string(),
-                })
-            }
-        };
-
-        let mut blacks: Mask = 0;
-        let mut whites: Mask = 0;
-        let mut kings: Mask = 0;
-
-        for position in d.iter().skip(1) {
-            let pieces_string: String = position.chars().skip(1).collect();
-            let pieces: Vec<_> = pieces_string.split(',').collect();
-
-            let mut temp: Mask = 0;
-
-            for piece in pieces.iter() {
-                let (piece_n, is_king) = match piece.chars().next() {
-                    Some('K') => (
-                        piece
-                            .chars()
-                            .skip(1)
-                            .collect::<String>()
-                            .parse::<u8>()
-                            .map_err(|_| ParseBoardError::PositionError {
-                                position: piece.to_string(),
-                            })?
-                            - 1,
-                        true,
-                    ),
-                    Some(_) => (
-                        piece
-                            .parse::<u8>()
-                            .map_err(|_| ParseBoardError::PositionError {
-                                position: piece.to_string(),
-                            })?
-                            - 1,
-                        false,
-                    ),
-                    None => break, // if no pieces exist. not super pretty or clear like this...
-                };
-
-                if piece_n > 31 {
-                    // already had been converted to computer numbers
-                    return Err(ParseBoardError::PositionError {
-                        position: piece.to_string(),
-                    });
-                }
-
-                temp |= 1 << piece_n;
-
-                if is_king {
-                    kings |= 1 << piece_n;
-                }
-            }
-
-            // match the color to assign it to
-            match position
-                .chars()
-                .next()
-                .ok_or(ParseBoardError::PositionError {
-                    position: "?".to_string(),
-                })? {
-                'B' => blacks |= temp,
-                'W' => whites |= temp,
-                ltr => {
-                    return Err(ParseBoardError::ColorError {
-                        letter: ltr.to_string(),
-                    })
-                }
-            };
-        }
-
-        Ok(Bitboard {
-            blacks,
-            whites,
-            kings,
-            turn,
-        })
+        let (_, board) = parse::board_fen_primary(fen_string)?;
+        Ok(board)
     }
 
     /// Determines whether a certain action is valid or not.

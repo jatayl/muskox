@@ -4,6 +4,7 @@ pub mod error;
 mod action;
 mod bitboard;
 mod evaluation;
+mod parse;
 mod zobrist;
 
 pub mod search {

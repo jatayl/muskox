@@ -1,3 +1,4 @@
+use nom::error::{VerboseError, VerboseErrorKind::Context};
 use snafu::Snafu;
 
 use crate::board::Color;
@@ -33,14 +34,39 @@ pub enum ActionError {
 
 #[derive(Debug, Snafu)]
 pub enum ParseBoardError {
-    #[snafu(display("There should be two colons ':' in the FEN string"))]
-    ColonQuantityError,
+    #[snafu(display("Invalid color letter (W and B are valid)!"))]
+    ColorError,
 
-    #[snafu(display("{} is not a valid board color (Black 'B' or White 'W')", letter))]
-    ColorError { letter: String },
+    #[snafu(display("Expected king designation or numbered position!"))]
+    PieceError,
 
     #[snafu(display("{} is not a valid position 1 - 32", position))]
     PositionError { position: String },
+
+    #[snafu(display("Couldn't parse board!"))]
+    GeneralError,
+}
+
+impl<T> From<nom::Err<VerboseError<T>>> for ParseBoardError {
+    fn from(err: nom::Err<VerboseError<T>>) -> Self {
+        let errors = match err {
+            nom::Err::Error(VerboseError { errors }) => errors,
+            _ => vec![],
+        };
+
+        for (_, kind) in errors {
+            if let Context(context) = kind {
+                match context {
+                    "color" => return ParseBoardError::ColorError,
+                    "king" => return ParseBoardError::PieceError,
+                    "digit" => return ParseBoardError::PieceError,
+                    _ => (),
+                }
+            }
+        }
+
+        ParseBoardError::GeneralError
+    }
 }
 
 #[derive(Debug, Snafu)]
