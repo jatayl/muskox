@@ -4,11 +4,11 @@ use std::io::{self, Write};
 use std::process;
 
 use crate::board::{Action, Bitboard};
-use crate::error::ParseCommandError;
+use crate::parse;
 use crate::search::{Engine, SearchConstraint, Searchable};
 
 // convert this to lifetimes later...
-enum Command {
+pub(crate) enum Command {
     SetFen(Bitboard),
     PrintFen,
     GetGameState,
@@ -30,122 +30,7 @@ use Command::*;
 
 impl Command {
     fn parse(command: &str) -> Result<Command, Box<dyn error::Error>> {
-        // this parser is supposed to do the error handling of commands strings
-        // so that the other part of this module does not have to
-
-        let command_split: Vec<_> = command.split(' ').collect();
-
-        // might want different assert size based on the command.
-
-        // match a command string to the abstract command object
-        match *command_split
-            .get(0)
-            .ok_or(ParseCommandError::NoCommandError)?
-        {
-            "fen" => match command_split.get(1) {
-                Some(fen_string) => {
-                    let board = Bitboard::from_fen(&fen_string)?;
-                    Ok(SetFen(board))
-                }
-                None => Ok(PrintFen),
-            },
-            "gamestate" => Ok(GetGameState),
-            "validate" => {
-                let action = Action::from_movetext(command_split.get(1).ok_or(
-                    ParseCommandError::ExpectedParameterError {
-                        parameter: "action".to_string(),
-                    },
-                )?)?;
-                Ok(ValidateAction(action))
-            }
-            "take" => {
-                let action = Action::from_movetext(command_split.get(1).ok_or(
-                    ParseCommandError::ExpectedParameterError {
-                        parameter: "action".to_string(),
-                    },
-                )?)?;
-                Ok(TakeAction(action))
-            }
-            "generate" => Ok(GenerateAllActions),
-            "search" => Ok(Search(match command_split.get(1) {
-                Some(&"depth") => SearchConstraint::depth(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(&"timed") => SearchConstraint::time(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(bad_option) => {
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
-                        option: bad_option.to_string(),
-                    }))
-                }
-                None => SearchConstraint::None,
-            })),
-            "best" => Ok(PickAction(match command_split.get(1) {
-                Some(&"depth") => SearchConstraint::depth(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(&"timed") => SearchConstraint::time(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(bad_option) => {
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
-                        option: bad_option.to_string(),
-                    }))
-                }
-                None => SearchConstraint::None,
-            })),
-            "evaluate" => Ok(EvaluateBoard(match command_split.get(1) {
-                Some(&"depth") => SearchConstraint::depth(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(&"timed") => SearchConstraint::time(
-                    command_split
-                        .get(2)
-                        .ok_or(ParseCommandError::ExpectedParameterError {
-                            parameter: "depth".to_string(),
-                        })?
-                        .parse::<u32>()?,
-                )?,
-                Some(bad_option) => {
-                    return Err(Box::new(ParseCommandError::ConstraintOptionError {
-                        option: bad_option.to_string(),
-                    }))
-                }
-                None => SearchConstraint::None,
-            })),
-            "turn" => Ok(GetTurn),
-            "print" => Ok(Print),
-            "history" => Ok(GetMoveHistory),
-            "clear" => Ok(Clear),
-            "exit" => Ok(Exit),
-            _ => Err(format!("Invalid command: {}!", command).into()),
-        }
+        Ok(parse::command_primary(command).unwrap().1)
     }
 }
 

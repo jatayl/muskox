@@ -320,6 +320,7 @@ dependencies = [
  "criterion",
  "lazy_static",
  "nom",
+ "num-traits",
  "ordered-float",
  "rayon",
  "snafu",

@@ -2,6 +2,7 @@ use std::cmp;
 use std::fmt;
 
 use crate::error::ParseActionError;
+use crate::parse;
 
 // need lookup table for square index for next direction
 
@@ -142,9 +143,9 @@ impl Action {
     /// ```
     /// use muskox::board::Action;
     ///
-    /// let action = Action::from_vector(vec![19, 24]).unwrap();
+    /// let action = Action::from_vec(vec![19, 24]).unwrap();
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
-    pub fn from_vector(positions: Vec<u8>) -> Result<Self, ParseActionError> {
+    pub fn from_vec(positions: Vec<u8>) -> Result<Self, ParseActionError> {
         // maybe make this method work for all iterators and not just vectors
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
@@ -162,7 +163,7 @@ impl Action {
             });
         }
 
-        let source = positions[0];
+        let source = *positions.first().unwrap();
         let destination = *positions.last().unwrap();
 
         let mut data = source as u32; // source
@@ -212,17 +213,7 @@ impl Action {
     /// assert_eq!(action.source(), 18);  // note that internal representation starts from 0, no longer 1.
     /// ```
     pub fn from_movetext(movetext: &str) -> Result<Self, ParseActionError> {
-        let positions: Vec<_> = movetext
-            .split('-')
-            .map(|x| {
-                x.parse::<u8>()
-                    .map_err(|_| ParseActionError::PositionValueError {
-                        position: x.to_string(),
-                    })
-            })
-            .collect::<Result<_, ParseActionError>>()?;
-
-        Action::from_vector(positions)
+        Ok(parse::action_primary(movetext).unwrap().1)
     }
 
     /// Returns the starting location of a particular action

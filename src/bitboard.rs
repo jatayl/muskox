@@ -534,7 +534,7 @@ impl Searchable for Bitboard {
                         let mut action = base_action.clone();
                         action.push(candidate);
                         let action: Vec<_> = action.iter().map(|x| (x + 1) as u8).collect();
-                        let action = Action::from_vector(action).unwrap();
+                        let action = Action::from_vec(action).unwrap();
 
                         let ends_as_king = {
                             let dest_row = candidate / 4;
@@ -592,7 +592,7 @@ impl Searchable for Bitboard {
                         action_vec.push(candidate);
 
                         let action =
-                            Action::from_vector(action_vec.iter().map(|x| (x + 1) as u8).collect())
+                            Action::from_vec(action_vec.iter().map(|x| (x + 1) as u8).collect())
                                 .unwrap();
 
                         let direction = Direction::between(jumper, candidate).unwrap();

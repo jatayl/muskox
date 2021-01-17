@@ -12,6 +12,7 @@ ordered-float = "2.0"
 rayon = "1.5"
 lazy_static = "1.4"
 nom = "6.0"
+num-traits = "0.2"
 
 [dev-dependencies]
 criterion = "0.3"
