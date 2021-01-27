@@ -1,7 +1,7 @@
 use nom::{
     bytes::complete::{tag, take, take_while},
     character::complete::digit1,
-    combinator::map_res,
+    combinator::{map, map_res},
     error::{context, VerboseError},
     multi::separated_list1,
     sequence::tuple,
@@ -11,7 +11,7 @@ use num_traits::PrimInt;
 
 use crate::app::Command;
 use crate::board::{Action, Bitboard, Color};
-use crate::error::ParseBoardError;
+use crate::error::ParseError;
 use crate::search::SearchConstraint;
 
 // try to condense these functions except for stuff taht is too large or reused..
@@ -26,8 +26,7 @@ fn from_decimal<T: PrimInt>(input: &str) -> Result<T, T::FromStrRadixErr> {
 // everything below is for parsing the action
 
 fn position_primary(input: &str) -> Res<&str, u8> {
-    let (input, position) =
-        map_res(take_while(|c: char| c.is_digit(10)), from_decimal::<u8>)(input)?;
+    let (input, position) = context("position", map_res(digit1, from_decimal::<u8>))(input)?;
 
     if !(1..=32).contains(&position) {
         panic!("another unhandled error!");
@@ -37,9 +36,12 @@ fn position_primary(input: &str) -> Res<&str, u8> {
 }
 
 pub(crate) fn action_primary(input: &str) -> Res<&str, Action> {
-    map_res(
-        separated_list1(tag("-"), position_primary),
-        Action::from_vec,
+    context(
+        "delimiter",
+        map_res(
+            separated_list1(tag("-"), position_primary),
+            Action::from_vec,
+        ),
     )(input)
 }
 
@@ -53,11 +55,11 @@ fn search_constraint_primary(input: &str) -> Res<&str, SearchConstraint> {
     let (input, constraint_name) = take_while(|c: char| c.is_ascii_alphabetic())(input)?;
     let (input, _) = take_while(is_space)(input)?;
 
-    // would be better to use switch macro!!
+    // would be better to use the switch macro
     let constraint = match constraint_name {
         "" => SearchConstraint::none(),
-        "timed" => SearchConstraint::time(from_decimal(input).unwrap()).unwrap(), // this is so unsafe hahah
-        "depth" => SearchConstraint::depth(from_decimal(input).unwrap()).unwrap(),
+        "timed" => map_res(map_res(digit1, from_decimal), SearchConstraint::time)(input)?.1,
+        "depth" => map_res(map_res(digit1, from_decimal), SearchConstraint::depth)(input)?.1,
         _ => panic!("bad!"),
     };
 
@@ -72,39 +74,37 @@ pub(crate) fn command_primary(input: &str) -> Res<&str, Command> {
     let (input, cmd_name) = take_while(|c: char| c.is_ascii_alphabetic())(input)?;
     let (input, _) = take_while(is_space)(input)?;
 
-    // will want to switch to switch in nom
-    let command = match cmd_name {
-        "fen" => match input {
-            "" => PrintFen,
-            _ => SetFen(board_fen_primary(input)?.1),
-        },
-        "validate" => ValidateAction(action_primary(input)?.1),
-        "take" => TakeAction(action_primary(input)?.1),
-        "search" => Search(search_constraint_primary(input)?.1),
-        "best" => PickAction(search_constraint_primary(input)?.1),
-        "evaluate" => EvaluateBoard(search_constraint_primary(input)?.1),
-        "gamestate" => GetGameState,
-        "generate" => GenerateAllActions,
-        "turn" => GetTurn,
-        "print" => Print,
-        "history" => GetMoveHistory,
-        "clear" => Clear,
-        "exit" => Exit,
-        _ => panic!("bad!"),
-    };
+    let wrap_fn = |cmd| Ok(("", cmd));
 
-    // the "" isnt really useful haha
-    Ok(("", command))
+    match cmd_name {
+        "fen" => match input {
+            "" => wrap_fn(PrintFen),
+            _ => map(board_fen_primary, SetFen)(input),
+        },
+        "validate" => map(action_primary, ValidateAction)(input),
+        "take" => map(action_primary, TakeAction)(input),
+        "search" => map(search_constraint_primary, Search)(input),
+        "best" => map(search_constraint_primary, PickAction)(input),
+        "evaluate" => map(search_constraint_primary, EvaluateBoard)(input),
+        "gamestate" => wrap_fn(GetGameState),
+        "generate" => wrap_fn(GenerateAllActions),
+        "turn" => wrap_fn(GetTurn),
+        "print" => wrap_fn(Print),
+        "history" => wrap_fn(GetMoveHistory),
+        "clear" => wrap_fn(Clear),
+        "exit" => wrap_fn(Exit),
+        _ => panic!("return error here when it implements properly!!"),
+    }
 }
 
 // everything below is for parsing bitboards' fens
 
-fn match_color(input: &str) -> Result<Color, ParseBoardError> {
+fn match_color(input: &str) -> Result<Color, ParseError> {
     // not sure if this is 'best practice'. switch to switch in nom
     match input {
         "W" => Ok(Color::White),
         "B" => Ok(Color::Black),
-        _ => Err(ParseBoardError::ColorError),
+        _ => Err(ParseError::ColorError),
     }
 }
 
@@ -112,12 +112,12 @@ fn color_primary(input: &str) -> Res<&str, Color> {
     context("color", map_res(take(1_usize), match_color))(input)
 }
 
-fn king_primary(input: &str) -> Result<bool, ParseBoardError> {
+fn king_primary(input: &str) -> Result<bool, ParseError> {
     // not a huge fan of this
     match input {
         "K" => Ok(true),
         "" => Ok(false),
-        _ => Err(ParseBoardError::PieceError),
+        _ => Err(ParseError::PieceError),
     }
 }
 

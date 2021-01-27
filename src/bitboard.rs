@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::default;
 
 use crate::board::{Action, ActionType, Direction};
-use crate::error::{ActionError, ParseBoardError};
+use crate::error::{ActionError, ParseError};
 use crate::evaluation::GLOBAL_EVAL;
 use crate::parse;
 use crate::search::{ActionStatePair, GameState, Optim, Score, Searchable, Side, Winner};
@@ -93,7 +93,7 @@ impl Bitboard {
     /// let board = Bitboard::from_fen("B:W18,24,27,28,K10,K15:B12,16,20,K22,K25,K29");
     /// // will put proof that it works here
     /// ```
-    pub fn from_fen(fen_string: &str) -> Result<Self, ParseBoardError> {
+    pub fn from_fen(fen_string: &str) -> Result<Self, ParseError> {
         let (_, board) = parse::board_fen_primary(fen_string)?;
         Ok(board)
     }

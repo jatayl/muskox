@@ -1,11 +1,11 @@
 use std::default;
-use std::error;
 use std::io::{self, Write};
 use std::process;
 
 use crate::board::{Action, Bitboard};
 use crate::parse;
 use crate::search::{Engine, SearchConstraint, Searchable};
+use crate::error::ParseError;
 
 // convert this to lifetimes later...
 pub(crate) enum Command {
@@ -29,8 +29,8 @@ use Command::*;
 // this module is so poorly written its not even funny! check other files for better, more interesting code :)
 
 impl Command {
-    fn parse(command: &str) -> Result<Command, Box<dyn error::Error>> {
-        Ok(parse::command_primary(command).unwrap().1)
+    fn parse(command: &str) -> Result<Command, ParseError> {
+        Ok(parse::command_primary(command)?.1)
     }
 }
 

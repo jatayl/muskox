@@ -33,7 +33,8 @@ pub enum ActionError {
 }
 
 #[derive(Debug, Snafu)]
-pub enum ParseBoardError {
+pub enum ParseError {
+    // for board below
     #[snafu(display("Invalid color letter (W and B are valid)!"))]
     ColorError,
 
@@ -44,10 +45,36 @@ pub enum ParseBoardError {
     PositionError { position: String },
 
     #[snafu(display("Couldn't parse board!"))]
-    GeneralError,
+    InvalidBoard,
+
+    // for actions only...
+    #[snafu(display("Can only have up to eight positions in any given movetext!"))]
+    MoveQuantityError,
+
+    #[snafu(display("Read invalid position (make sure all positions are between 1 and 32)!"))]
+    PositionValueError,
+
+    #[snafu(display("Error parsing delimiter '-' between positions in movetext!"))]
+    InvalidDelimiter,
+
+    #[snafu(display("Invalid action!"))]
+    InvalidAction,
+
+    // For the commands here....
+    #[snafu(display("No command supplied!"))]
+    NoCommandError,
+
+    #[snafu(display("Invalid constraint option!"))]
+    ConstraintOptionError,
+
+    #[snafu(display("Invalid constraint value!"))]
+    ConstraintValueError,
+
+    #[snafu(display("Invalid command!"))]
+    InvalidCommand,
 }
 
-impl<T> From<nom::Err<VerboseError<T>>> for ParseBoardError {
+impl<T> From<nom::Err<VerboseError<T>>> for ParseError {
     fn from(err: nom::Err<VerboseError<T>>) -> Self {
         let errors = match err {
             nom::Err::Error(VerboseError { errors }) => errors,
@@ -55,37 +82,20 @@ impl<T> From<nom::Err<VerboseError<T>>> for ParseBoardError {
         };
 
         for (_, kind) in errors {
-            if let Context(context) = kind {
-                match context {
-                    "color" => return ParseBoardError::ColorError,
-                    "king" => return ParseBoardError::PieceError,
-                    "digit" => return ParseBoardError::PieceError,
-                    _ => (),
-                }
+            // will need a way of contexting invalid board, action, command, etc
+            match kind {
+                Context("color") => return ParseError::ColorError,
+                Context("king") => return ParseError::PieceError,
+                Context("digit") => return ParseError::PieceError,
+                Context("position") => return ParseError::PositionValueError,
+                Context("delimiter") => return ParseError::InvalidDelimiter,
+                Context("no command") => return ParseError::NoCommandError,
+                Context("constraint option") => return ParseError::ConstraintOptionError,
+                Context("constraint value") => return ParseError::ConstraintValueError,
+                _ => (),
             }
         }
 
-        ParseBoardError::GeneralError
+        ParseError::ColorError // this will just need to be generalll..
     }
-}
-
-#[derive(Debug, Snafu)]
-pub enum ParseActionError {
-    #[snafu(display("Number of moves must be 1 and 8 and not {}", quantity))]
-    MoveQuantityError { quantity: usize },
-
-    #[snafu(display("Position {} is invalid", position))]
-    PositionValueError { position: String },
-}
-
-#[derive(Debug, Snafu)]
-pub enum ParseCommandError {
-    #[snafu(display("No command supplied!"))]
-    NoCommandError,
-
-    #[snafu(display("Invalid constraint option: {}!", option))]
-    ConstraintOptionError { option: String },
-
-    #[snafu(display("Expected parameter for {}!", parameter))]
-    ExpectedParameterError { parameter: String },
 }
