@@ -20,3 +20,6 @@ criterion = "0.3"
 [[bench]]
 name = "benchmark"
 harness = false
+
+[patch.crates-io]
+lexical-core = {git = 'https://github.com/Gelbpunkt/rust-lexical', branch = 'fix-warnings-and-update-deps'}

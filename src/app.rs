@@ -3,9 +3,9 @@ use std::io::{self, Write};
 use std::process;
 
 use crate::board::{Action, Bitboard};
+use crate::error::ParseError;
 use crate::parse;
 use crate::search::{Engine, SearchConstraint, Searchable};
-use crate::error::ParseError;
 
 // convert this to lifetimes later...
 pub(crate) enum Command {

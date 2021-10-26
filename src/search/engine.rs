@@ -109,7 +109,12 @@ impl<S: Searchable> Engine<S> {
     }
 
     fn minmax_helper(
-        &self, state: &S, depth: u32, mut alpha: Score, mut beta: Score, zobrist_hash: u64,
+        &self,
+        state: &S,
+        depth: u32,
+        mut alpha: Score,
+        mut beta: Score,
+        zobrist_hash: u64,
     ) -> Score {
         if let Some(value) = self.tt.probe(zobrist_hash, &state, depth as u8) {
             return value;
