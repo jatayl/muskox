@@ -11,7 +11,7 @@ lazy_static! {
         let mut table = [0; 97];
 
         // maybe make the seed time or something
-        let mut prng = PRNG::new(SEED);
+        let mut prng = Prng::new(SEED);
 
         for entry in table.iter_mut() {
             *entry = prng.rand64()
@@ -45,13 +45,13 @@ pub fn get_turn_hash() -> u64 {
     ZOBRIST_TABLE[96]
 }
 
-struct PRNG {
+struct Prng {
     s: u64,
 }
 
-impl PRNG {
+impl Prng {
     fn new(seed: u64) -> Self {
-        PRNG { s: seed }
+        Prng { s: seed }
     }
 
     fn rand64(&mut self) -> u64 {

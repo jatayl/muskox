@@ -25,7 +25,7 @@ impl BoardEvaluator {
     #[inline]
     pub fn eval(&self, board: &Bitboard) -> Score {
         match self {
-            Classical(f) => f(&board),
+            Classical(f) => f(board),
             Nnue => panic!("Cannot use NNUE evaluation yet!"),
         }
     }

@@ -151,7 +151,7 @@ impl Action {
         let positions: Vec<_> = positions.iter().map(|x| x - 1).collect();
 
         // check that all of the position numbers are in the right range
-        if positions.iter().find(|&&x| x > 31).is_some() {
+        if positions.iter().any(|&x| x > 31) {
             return Err(ParseError::PositionValueError);
         }
 

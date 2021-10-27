@@ -233,7 +233,7 @@ pub fn run() -> ! {
             .expect("Error with your standard input!");
         let input = input.trim();
 
-        let command = Command::parse(&input);
+        let command = Command::parse(input);
 
         match command {
             Ok(cmd) => state.execute(&cmd),

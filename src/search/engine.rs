@@ -52,7 +52,7 @@ impl<S: Searchable> Engine<S> {
                 .iter()
                 .map(|p| {
                     me.minmax_helper(
-                        &p.state(),
+                        p.state(),
                         depth,
                         Score::NEG_INFINITY,
                         Score::INFINITY,
@@ -72,7 +72,7 @@ impl<S: Searchable> Engine<S> {
             });
             // can get rid of this part..
             results
-                .iter()
+                .into_iter()
                 .map(|(&a, &s)| ActionScorePair {
                     action: a,
                     score: s,
@@ -116,7 +116,7 @@ impl<S: Searchable> Engine<S> {
         mut beta: Score,
         zobrist_hash: u64,
     ) -> Score {
-        if let Some(value) = self.tt.probe(zobrist_hash, &state, depth as u8) {
+        if let Some(value) = self.tt.probe(zobrist_hash, state, depth as u8) {
             return value;
         }
 
@@ -134,7 +134,7 @@ impl<S: Searchable> Engine<S> {
 
                 for (state_p, zobrist_diff) in nodes.iter().map(|a| (a.state(), a.zobrist_diff())) {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
+                    let eval = self.minmax_helper(state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     max_eval = cmp::max(max_eval, eval);
                     alpha = cmp::max(alpha, max_eval);
                     if beta <= alpha {
@@ -153,7 +153,7 @@ impl<S: Searchable> Engine<S> {
 
                 for (state_p, zobrist_diff) in nodes.iter().map(|a| (a.state(), a.zobrist_diff())) {
                     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
-                    let eval = self.minmax_helper(&state_p, depth - 1, alpha, beta, zobrist_hash_p);
+                    let eval = self.minmax_helper(state_p, depth - 1, alpha, beta, zobrist_hash_p);
                     min_eval = cmp::min(min_eval, eval);
                     beta = cmp::min(beta, min_eval);
                     if beta <= alpha {
@@ -165,25 +165,7 @@ impl<S: Searchable> Engine<S> {
             }
         };
 
-        // POTENTIAL NEGAMAX IMPLEMENTATION
-        // check out: https://stackoverflow.com/questions/41182117/modify-minimax-to-alpha-beta-pruning-pseudo-code
-        // currently performance is problematically inconsistent
-
-        // let mut max_eval = f32::NEG_INFINITY;
-
-        // for (state_p, zobrist_diff) in state.generate_all_actions().iter().map(|a| (a.state(), a.zobrist_diff())) {
-        //     let zobrist_hash_p = zobrist_hash ^ zobrist_diff;
-        //     let eval = -self.minmax_helper(&state_p, depth - 1, -beta, -alpha, zobrist_hash_p);
-        //     max_eval = *cmp::max(OrderedFloat(max_eval), OrderedFloat(eval));
-        //     if max_eval >= beta {
-        //         return max_eval;
-        //     }
-        //     if max_eval > alpha {
-        //         alpha = max_eval;
-        //     }
-        // }
-
-        self.tt.save(zobrist_hash, &state, depth as u8, eval);
+        self.tt.save(zobrist_hash, state, depth as u8, eval);
 
         eval
     }
