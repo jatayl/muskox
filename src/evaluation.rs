@@ -3,8 +3,8 @@ use std::ops::Fn;
 
 use lazy_static::lazy_static;
 
-use crate::board::Bitboard;
-use crate::search::Score;
+use crate::board::{Bitboard, Color};
+use crate::search::{GameState, Score, Searchable, Winner};
 
 // honestly not 100% sure what to do with this module as there are many different approaches
 // each with their own benefits. when i get a better sense with what i want out of this module
@@ -34,7 +34,14 @@ impl BoardEvaluator {
 impl default::Default for BoardEvaluator {
     fn default() -> Self {
         Classical(Box::new(|board: &Bitboard| {
-            // need the evaluation for the finished game.,..
+            if let GameState::Completed(winner) = board.get_game_state() {
+                match winner {
+                    Winner::Player(Color::Black) => return Score::from(f32::INFINITY),
+                    Winner::Player(Color::White) => return Score::from(f32::NEG_INFINITY),
+                    Winner::Draw => return Score::from(0.),
+                }
+            }
+
             // reaccess this as mask
             let count_ones = |mut mask: u32| {
                 let mut count = Score::from(0.);
